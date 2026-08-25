@@ -112,6 +112,23 @@ function what(
     return `Pulled out ${pages} (${formatBytes(first.bytes)}).`;
   }
 
+  if (ops.includes('image.remove-background')) {
+    const cut = typeof first.meta.removedFraction === 'number' ? first.meta.removedFraction : undefined;
+    const share = cut === undefined ? '' : ` ${Math.round(cut * 100)}% of the image is now transparent.`;
+
+    // A cut that took almost nothing, or almost everything, is the signature of
+    // a background this method cannot handle. Saying so beats letting someone
+    // discover it when they open the file.
+    const doubt =
+      cut !== undefined && (cut < 0.02 || cut > 0.95)
+        ? ' That looks off - this works by flooding in from the edges, so it needs a fairly even background. A busy photo needs a proper segmentation model.'
+        : '';
+
+    return `Removed the background - ${formatBytes(first.bytes)}.${share}${doubt}`;
+  }
+  if (ops.includes('image.watermark') || ops.includes('pdf.watermark')) {
+    return `Watermarked${outputs.length > 1 ? ` ${plural(outputs.length, 'file')}` : ''} - ${formatBytes(outputBytes)}.`;
+  }
   if (ops.includes('image.crop')) {
     const size = typeof first.meta.width === 'number' ? ` to ${first.meta.width}x${first.meta.height}` : '';
     return `Cropped${size} - ${formatBytes(outputBytes)}.`;

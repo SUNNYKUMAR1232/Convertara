@@ -63,6 +63,7 @@ export const OPERATION_WORDS: readonly string[] = [
   'keep', 'take', 'only', 'split', 'rotate', 'flip', 'flop', 'greyscale', 'grayscale',
   'monochrome', 'strip', 'remove', 'clear', 'delete', 'zip', 'unzip', 'archive', 'bundle',
   'package', 'unpack', 'decompress', 'resize', 'scale', 'resample', 'crop', 'metadata', 'exif',
+  'watermark', 'watermarked', 'stamp', 'background', 'transparent', 'cutout',
 ];
 
 /** Words that signal judgement rather than instruction - hand those to the model. */
@@ -95,6 +96,17 @@ export function planFromRules(prompt: string, files: WorkFile[]): FastPathResult
     if (!match) return undefined;
     consumed.push([match.index, match.index + match[0].length]);
     return match;
+  };
+
+  /**
+   * Match without claiming the words, for rules that can still decide not to
+   * act. Consuming up front and then bailing marks the phrase as understood
+   * while doing nothing about it - which is the silent-dropped-instruction
+   * failure the coverage check exists to catch.
+   */
+  const peek = (re: RegExp): RegExpExecArray | undefined => re.exec(lower) ?? undefined;
+  const claim = (match: RegExpExecArray): void => {
+    consumed.push([match.index, match.index + match[0].length]);
   };
 
   // Selection first, because it decides which domain the rest of the rules are
@@ -185,6 +197,38 @@ export function planFromRules(prompt: string, files: WorkFile[]): FastPathResult
     draft.operations.push(
       domain === 'pdf' ? { op: 'pdf.rotate', params: { angle } } : { op: 'image.rotate', params: { angle } },
     );
+  }
+
+  // "remove the background", "remove bg", "make the background transparent"
+  if (
+    take(/\b(?:remove|delete|cut ?out|drop|strip)\s+(?:the\s+)?(?:bg|background)\b/) ??
+    take(/\b(?:transparent|no)\s+(?:bg|background)\b/) ??
+    take(/\bbackground\s+(?:removal|transparent)\b/)
+  ) {
+    draft.operations.push({ op: 'image.remove-background', params: {} });
+    // `make` is not filler - it triggers the convert rule - so "make the
+    // background transparent" would otherwise look half-understood.
+    take(/\b(?:make|turn|render)\b/);
+  }
+
+  // "watermark it with Draft", "stamp CONFIDENTIAL across it". The text runs to
+  // the end of the message, because a watermark's text is arbitrary and any
+  // trailing rule would eat part of it.
+  const mark = peek(
+    /\b(?:watermark|stamp)\b(?:\s+(?:it|this|them|these|every page|all pages))?(?:\s+(?:with|saying|that says|as|reading))?\s*["'“]?([\w .,'&#!?-]{1,60}?)["'”]?\s*$/,
+  );
+  if (mark) {
+    const text = (mark[1] ?? '').trim();
+    // A bare "watermark it" names no text to stamp. Leaving it unclaimed sends
+    // the request onward instead of quietly returning an unmarked file.
+    if (text !== '' && !/^(it|this|them|these|please)$/.test(text)) {
+      claim(mark);
+      draft.operations.push(
+        domain === 'pdf'
+          ? { op: 'pdf.watermark', params: { text } }
+          : { op: 'image.watermark', params: { text, tile: /\b(?:tile|across|all over|everywhere)\b/.test(lower) } },
+      );
+    }
   }
 
   if (take(/\b(?:gr[ae]yscale|black and white|monochrome)\b/)) {

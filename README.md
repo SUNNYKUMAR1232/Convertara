@@ -119,6 +119,27 @@ model at all:
 | "which is smaller, webp or avif?" | Goes to your configured model, streamed token by token. |
 | "do" / "ok" | Says it does not know what you meant and gives examples. A file being attached does not make a message an instruction. |
 
+## Removing a background, honestly
+
+`image.remove-background` floods in from the edges and cuts what it reaches.
+That covers what people mostly want - logos, icons, screenshots, product shots
+on a studio backdrop - and it is deterministic, instant, offline, and needs no
+model to download. An area enclosed by the subject is left alone, because a hole
+is not the background.
+
+It does **not** do hair against a hedge. Anything where subject and background
+share colours needs a segmentation model. Rather than return a bad cut quietly,
+it says so:
+
+> Removed the background - 41 KB. 3% of the image is now transparent. That looks
+> off - this works by flooding in from the edges, so it needs a fairly even
+> background. A busy photo needs a proper segmentation model.
+
+Watermarks come in two flavours. `image.watermark` rasterises text through
+librsvg, so the Docker image installs fonts - a slim image has none, and the
+watermark would come out blank with no error anywhere. `pdf.watermark` embeds a
+standard font and needs nothing installed.
+
 ## Bulk work picks the right files
 
 Drop a folder in and say what you want done. Selection happens before any engine
@@ -203,8 +224,8 @@ browser — the settings screen only ever sees `sk-•••abcd`.
 
 | Domain | Capabilities |
 |---|---|
-| Image | convert · resize · compress · crop · rotate · greyscale · strip metadata |
-| PDF | merge · split · extract pages · rotate · metadata · images→PDF · compress\* |
+| Image | convert · resize · compress · crop · rotate · greyscale · strip metadata · remove background · watermark |
+| PDF | merge · split · extract pages · rotate · metadata · images→PDF · watermark · compress\* |
 | Archive | create · extract · inspect |
 
 \* `pdf.compress` needs Ghostscript on the host. If it is missing the capability

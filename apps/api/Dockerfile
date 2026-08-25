@@ -23,8 +23,19 @@ WORKDIR /app
 # Ghostscript powers pdf.compress. Without it the capability is advertised as
 # unavailable rather than silently doing nothing, so this line is what turns
 # PDF size targets on.
+#
+# The fonts are not optional either: image.watermark rasterises text through
+# librsvg, and a slim image has no fonts at all - the watermark would come out
+# blank with no error anywhere. (pdf.watermark embeds a standard font and does
+# not need these.)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ghostscript ca-certificates tini \
+ && apt-get install -y --no-install-recommends \
+      ghostscript \
+      fonts-dejavu-core \
+      fontconfig \
+      ca-certificates \
+      tini \
+ && fc-cache -f \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production

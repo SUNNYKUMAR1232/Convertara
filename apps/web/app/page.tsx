@@ -1,11 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AttachmentTray } from '@/components/AttachmentTray';
 import { ImageEditor } from '@/components/ImageEditor';
 import type { Adjustment } from '@/components/ImageEditor';
 import { Message } from '@/components/Message';
+import { SettingsPanel } from '@/components/SettingsPanel';
 import { chatApi, formatBytes, sendAdjustment, sendTurn, uploadFiles } from '@/lib/chat';
 import type { Attachment, ChatMessage, Conversation, TurnEvent } from '@/lib/chat';
 
@@ -28,6 +28,7 @@ export default function Chat() {
   const [dragging, setDragging] = useState(false);
   const [sidebar, setSidebar] = useState(false);
   const [editing, setEditing] = useState<Attachment | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // Everything is selected until someone says otherwise.
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
@@ -42,6 +43,17 @@ export default function Chat() {
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setEditing(null);
+      setSettingsOpen(false);
+      setSidebar(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const attach = useCallback(async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
@@ -240,19 +252,29 @@ export default function Chat() {
         </div>
 
         <div className="side-foot">
-          <Link href="/settings">Settings</Link>
+          <button
+            className="linky"
+            onClick={() => {
+              setSettingsOpen(true);
+              setSidebar(false);
+            }}
+          >
+            Settings
+          </button>
         </div>
       </aside>
 
-      <main className="thread-pane">
+      {sidebar && <div className="scrim" onClick={() => setSidebar(false)} aria-hidden />}
+
+      <main className="thread-pane" onPointerDown={() => sidebar && setSidebar(false)}>
         <header className="bar">
           <button className="hamburger" onClick={() => setSidebar((s) => !s)} aria-label="Conversations">
             ☰
           </button>
           <span className="title">Convertara</span>
-          <Link href="/settings" className="gear">
+          <button className="gear" onClick={() => setSettingsOpen(true)}>
             Settings
-          </Link>
+          </button>
         </header>
 
         <div className="messages">
@@ -357,6 +379,25 @@ export default function Chat() {
             onApply={(adjustment) => void applyAdjustment(adjustment)}
             onClose={() => setEditing(null)}
           />
+        </div>
+      )}
+
+      {settingsOpen && (
+        <div
+          className="editor-veil"
+          onPointerDown={(event) => event.target === event.currentTarget && setSettingsOpen(false)}
+        >
+          <div className="sheet">
+            <div className="sheet-head">
+              <strong>Settings</strong>
+              <button className="close" onClick={() => setSettingsOpen(false)} aria-label="Close settings">
+                ×
+              </button>
+            </div>
+            <div className="sheet-body">
+              <SettingsPanel />
+            </div>
+          </div>
         </div>
       )}
 

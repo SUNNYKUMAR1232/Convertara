@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { AppError } from '../../core/errors.js';
 import type { Capability, EnginePlugin, OpInput, SizeOptimizer, WorkFile } from '../../router/types.js';
 import { IMAGE_FORMATS, MIME_BY_FORMAT, encode, formatFromMime, probe, sharp } from './sharp-util.js';
+import { removeBackground } from './background.js';
+import { watermarkSvg } from './watermark.js';
 import type { ImageFormat } from './sharp-util.js';
 
 const formatEnum = z.enum(IMAGE_FORMATS);
@@ -262,6 +264,100 @@ const stripMetadata: Capability = {
  * The knobs the size optimizer is allowed to turn. Quality first, dimensions
  * only when quality alone cannot reach the window.
  */
+/** Formats that can actually carry the transparency a cut-out produces. */
+const ALPHA_FORMATS = new Set<ImageFormat>(['png', 'webp', 'avif', 'gif', 'tiff']);
+
+const removeBg: Capability = {
+  name: 'image.remove-background',
+  domain: 'image',
+  title: 'Remove the background',
+  description:
+    'Cut the background out and make it transparent. Works by flooding in from the edges, so it is reliable on solid or near-solid backgrounds - logos, icons, screenshots, product shots - and not on busy photos.',
+  accepts: ACCEPTS,
+  produces: 'same',
+  cost: 6,
+  available: always,
+  paramsHint:
+    'tolerance: 1-100 how far from the edge colour still counts as background (default 12), feather: soften the cut edge in px (default 2), color: hex to key out instead of sampling',
+  paramsSchema: z.object({
+    tolerance: z.number().min(1).max(100).default(12),
+    feather: z.number().int().min(0).max(8).default(2),
+    color: z
+      .string()
+      .regex(/^#?[0-9a-fA-F]{6}$/)
+      .optional(),
+  }),
+  run: (input: OpInput<{ tolerance: number; feather: number; color?: string }>) =>
+    mapFiles(input, async (file) => {
+      const current = await targetFormat(file);
+      // JPEG has no alpha, so a cut-out has to change format or it is pointless.
+      const format = ALPHA_FORMATS.has(current) ? current : 'png';
+
+      const result = await removeBackground(file.data, {
+        tolerance: input.params.tolerance,
+        feather: input.params.feather,
+        color: input.params.color ? hexToRgb(input.params.color) : undefined,
+      });
+
+      const data = await encode(
+        sharp(result.data, { raw: { width: result.width, height: result.height, channels: 4 } }),
+        { format, quality: 92, strip: true },
+      ).toBuffer();
+
+      const out = await annotate(file.name, data, format);
+      // Carried through so the reply can say how much was actually cut.
+      out.meta.removedFraction = Number(result.removed.toFixed(4));
+      return out;
+    }),
+};
+
+const watermark: Capability = {
+  name: 'image.watermark',
+  domain: 'image',
+  title: 'Watermark an image',
+  description: 'Overlay text on the image, in a corner or tiled across the whole thing.',
+  accepts: ACCEPTS,
+  produces: 'same',
+  cost: 3,
+  available: always,
+  paramsHint:
+    'text (required), anchor: center|north|south|east|west|northeast|northwest|southeast|southwest, opacity: 0-1, scale: fraction of the shorter side (default 0.06), color, rotate: degrees, tile: repeat across the image, margin: px',
+  paramsSchema: z.object({
+    text: z.string().min(1).max(120),
+    anchor: z
+      .enum(['center', 'north', 'south', 'east', 'west', 'northeast', 'northwest', 'southeast', 'southwest'])
+      .default('southeast'),
+    opacity: z.number().min(0.02).max(1).default(0.35),
+    scale: z.number().min(0.01).max(0.5).default(0.06),
+    color: z.string().max(32).default('#ffffff'),
+    rotate: z.number().min(-180).max(180).default(0),
+    tile: z.boolean().default(false),
+    margin: z.number().int().min(0).max(500).default(24),
+  }),
+  run: (input: OpInput<any>) =>
+    mapFiles(input, async (file) => {
+      const format = await targetFormat(file);
+      const facts = await probe(file.data);
+      const overlay = watermarkSvg(facts.width, facts.height, input.params);
+
+      const data = await encode(
+        sharp(file.data, { failOn: 'none' }).composite([{ input: overlay, top: 0, left: 0 }]),
+        { format, quality: 90, strip: input.ctx.constraints.stripMetadata },
+      ).toBuffer();
+
+      return annotate(file.name, data, format);
+    }),
+};
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const value = hex.replace('#', '');
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16),
+  };
+}
+
 const optimizer: SizeOptimizer = {
   domain: 'image',
   supports: (file) => file.mime.startsWith('image/'),
@@ -293,6 +389,6 @@ const optimizer: SizeOptimizer = {
 export const imageEngine: EnginePlugin = {
   domain: 'image',
   title: 'Image engine (libvips)',
-  capabilities: [convert, resize, compress, crop, rotate, grayscale, stripMetadata],
+  capabilities: [convert, resize, compress, crop, rotate, grayscale, stripMetadata, removeBg, watermark],
   optimizer,
 };

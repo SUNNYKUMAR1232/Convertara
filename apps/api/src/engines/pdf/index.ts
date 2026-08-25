@@ -1,4 +1,4 @@
-import { PDFDocument, degrees } from 'pdf-lib';
+import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { z } from 'zod';
 import { AppError } from '../../core/errors.js';
 import type { Capability, EnginePlugin, OpInput, SizeOptimizer, WorkFile } from '../../router/types.js';
@@ -228,6 +228,77 @@ const fromImages: Capability = {
   },
 };
 
+const watermark: Capability = {
+  name: 'pdf.watermark',
+  domain: 'pdf',
+  title: 'Watermark a PDF',
+  description: 'Stamp text diagonally across every page, or a selection of pages.',
+  accepts: ACCEPTS,
+  produces: PDF_MIME,
+  cost: 2,
+  available: always,
+  paramsHint:
+    'text (required), opacity: 0-1 (default 0.18), rotate: degrees (default 45), color: hex, size: points, pages: selection string',
+  paramsSchema: z.object({
+    text: z.string().min(1).max(120),
+    opacity: z.number().min(0.02).max(1).default(0.18),
+    rotate: z.number().min(-180).max(180).default(45),
+    color: z
+      .string()
+      .regex(/^#?[0-9a-fA-F]{6}$/)
+      .default('#808080'),
+    size: z.number().min(6).max(400).optional(),
+    pages: z.string().max(200).default('all'),
+  }),
+  run: async (input: OpInput<any>) => {
+    const out: WorkFile[] = [];
+
+    for (const file of input.files) {
+      const doc = await load(file);
+      // A standard font, so this needs nothing installed on the host - unlike
+      // the image watermark, which rasterises text and so needs real fonts.
+      const font = await doc.embedFont(StandardFonts.HelveticaBold);
+      const indices = parsePageRange(input.params.pages, doc.getPageCount());
+      const colour = hexToRgb(input.params.color);
+
+      for (const index of indices) {
+        const page = doc.getPage(index);
+        const { width, height } = page.getSize();
+
+        // The default spans most of the page diagonal, which is what a
+        // watermark is for. A fixed default would be invisible on A0.
+        const size =
+          input.params.size ??
+          Math.max(12, (Math.hypot(width, height) * 0.8) / Math.max(1, input.params.text.length * 0.6));
+        const textWidth = font.widthOfTextAtSize(input.params.text, size);
+        const radians = (input.params.rotate * Math.PI) / 180;
+
+        page.drawText(input.params.text, {
+          x: width / 2 - (textWidth / 2) * Math.cos(radians),
+          y: height / 2 - (textWidth / 2) * Math.sin(radians),
+          size,
+          font,
+          color: rgb(colour.r / 255, colour.g / 255, colour.b / 255),
+          opacity: input.params.opacity,
+          rotate: degrees(input.params.rotate),
+        });
+      }
+
+      out.push(await emit(file.name, doc));
+    }
+    return out;
+  },
+};
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const value = hex.replace('#', '');
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16),
+  };
+}
+
 const compress: Capability = {
   name: 'pdf.compress',
   domain: 'pdf',
@@ -272,6 +343,6 @@ const optimizer: SizeOptimizer = {
 export const pdfEngine: EnginePlugin = {
   domain: 'pdf',
   title: 'PDF engine (pdf-lib, Ghostscript)',
-  capabilities: [merge, split, extractPages, rotate, setMetadata, fromImages, compress],
+  capabilities: [merge, split, extractPages, rotate, setMetadata, fromImages, watermark, compress],
   optimizer,
 };
