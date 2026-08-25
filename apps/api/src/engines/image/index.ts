@@ -305,8 +305,10 @@ const removeBg: Capability = {
       ).toBuffer();
 
       const out = await annotate(file.name, data, format);
-      // Carried through so the reply can say how much was actually cut.
+      // Carried through so the reply can say how much was cut, and how
+      // confident the cut looks.
       out.meta.removedFraction = Number(result.removed.toFixed(4));
+      out.meta.speckle = Number(result.speckle.toFixed(4));
       return out;
     }),
 };

@@ -49,6 +49,56 @@ describe('removing a background', () => {
     expect(result.removed).toBeLessThan(0.95);
   }, 30_000);
 
+  it('finds both backgrounds when there are two, not a median of neither', async () => {
+    // The failing case: a dark band across the top, light below. One median
+    // across the whole border lands between them and matches neither, which cut
+    // only the light half and left the dark half untouched at every tolerance.
+    const width = 240;
+    const height = 300;
+    const pixels = Buffer.alloc(width * height * 3);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const offset = (y * width + x) * 3;
+        const dark = y < 100;
+        pixels[offset] = dark ? 90 : 245;
+        pixels[offset + 1] = dark ? 68 : 244;
+        pixels[offset + 2] = dark ? 45 : 242;
+        const dx = x - width / 2;
+        const dy = y - height * 0.6;
+        if (dx * dx / (45 * 45) + dy * dy / (85 * 85) <= 1) {
+          pixels[offset] = 26;
+          pixels[offset + 1] = 26;
+          pixels[offset + 2] = 28;
+        }
+      }
+    }
+    const image = await sharp(pixels, { raw: { width, height, channels: 3 } }).png().toBuffer();
+
+    const result = await removeBackground(image, { tolerance: 12, feather: 0 });
+
+    expect(result.backgrounds.length).toBe(2);
+    expect(result.removed).toBeGreaterThan(0.7);
+    // Both corners gone, subject kept.
+    expect(result.data[3]).toBe(0);
+    expect(result.data[((height - 1) * width) * 4 + 3]).toBe(0);
+    expect(result.data[(Math.floor(height * 0.6) * width + width / 2) * 4 + 3]).toBe(255);
+  }, 30_000);
+
+  it('flags a speckled cut instead of passing it off as a clean one', async () => {
+    const width = 200;
+    const height = 200;
+    const noise = Buffer.alloc(width * height * 3);
+    for (let i = 0; i < noise.length; i += 1) noise[i] = (Math.sin(i * 0.7) * 127 + 128) ^ (i % 211);
+    const busy = await sharp(noise, { raw: { width, height, channels: 3 } }).jpeg({ quality: 92 }).toBuffer();
+
+    const messy = await removeBackground(busy, { tolerance: 12, feather: 0 });
+    const clean = await removeBackground(await productShot(), { tolerance: 12, feather: 0 });
+
+    // Two orders of magnitude apart - which is what makes it usable as a signal.
+    expect(messy.speckle).toBeGreaterThan(0.15);
+    expect(clean.speckle).toBeLessThan(0.05);
+  }, 30_000);
+
   it('samples the border rather than assuming white', async () => {
     const blue = await sharp({
       create: { width: 200, height: 150, channels: 3, background: { r: 20, g: 60, b: 200 } },
