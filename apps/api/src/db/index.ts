@@ -20,4 +20,13 @@ export async function closeRepository(): Promise<void> {
   repo = undefined;
 }
 
-export type { FileRecord, JobRecord, JobStatus, LlmConfigRecord, LlmProvider, Repository } from './types.js';
+export type {
+  ConversationRecord,
+  FileRecord,
+  JobRecord,
+  JobStatus,
+  LlmConfigRecord,
+  LlmProvider,
+  MessageRecord,
+  Repository,
+} from './types.js';

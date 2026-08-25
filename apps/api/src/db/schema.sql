@@ -58,3 +58,28 @@ CREATE TABLE IF NOT EXISTS llm_configs (
 CREATE INDEX IF NOT EXISTS llm_configs_owner_idx ON llm_configs (owner_id);
 CREATE UNIQUE INDEX IF NOT EXISTS llm_configs_one_default_idx
   ON llm_configs (owner_id) WHERE is_default;
+
+-- Conversations. Chat turns are stored so a follow-up like "now make it a PDF"
+-- can resolve "it" to the file the previous turn produced.
+CREATE TABLE IF NOT EXISTS conversations (
+  id         UUID PRIMARY KEY,
+  owner_id   TEXT        NOT NULL,
+  title      TEXT        NOT NULL DEFAULT 'New chat',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS conversations_owner_idx ON conversations (owner_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id              UUID PRIMARY KEY,
+  conversation_id UUID        NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  role            TEXT        NOT NULL CHECK (role IN ('user','assistant')),
+  text            TEXT        NOT NULL DEFAULT '',
+  /* File ids the user attached, or that the assistant produced. */
+  attachment_ids  UUID[]      NOT NULL DEFAULT '{}',
+  job_id          UUID        REFERENCES jobs(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS messages_conversation_idx ON messages (conversation_id, created_at);

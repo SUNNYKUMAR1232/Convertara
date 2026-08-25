@@ -61,6 +61,25 @@ export interface LlmConfigRecord {
   updatedAt: Date;
 }
 
+export interface ConversationRecord {
+  id: string;
+  ownerId: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface MessageRecord {
+  id: string;
+  conversationId: string;
+  role: 'user' | 'assistant';
+  text: string;
+  /** Files the user attached, or files the assistant produced. */
+  attachmentIds: string[];
+  jobId: string | null;
+  createdAt: Date;
+}
+
 export interface Repository {
   readonly driver: 'memory' | 'postgres';
   init(): Promise<void>;
@@ -82,4 +101,13 @@ export interface Repository {
   listLlmConfigs(ownerId: string): Promise<LlmConfigRecord[]>;
   getDefaultLlmConfig(ownerId: string): Promise<LlmConfigRecord | null>;
   deleteLlmConfig(id: string): Promise<void>;
+
+  createConversation(record: ConversationRecord): Promise<ConversationRecord>;
+  getConversation(id: string): Promise<ConversationRecord | null>;
+  listConversations(ownerId: string, limit: number): Promise<ConversationRecord[]>;
+  touchConversation(id: string, title?: string): Promise<void>;
+  deleteConversation(id: string): Promise<void>;
+
+  addMessage(record: MessageRecord): Promise<MessageRecord>;
+  listMessages(conversationId: string, limit: number): Promise<MessageRecord[]>;
 }

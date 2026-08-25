@@ -4,7 +4,14 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { notFound } from '../core/errors.js';
 import { logger } from '../core/logger.js';
-import type { FileRecord, JobRecord, LlmConfigRecord, Repository } from './types.js';
+import type {
+  ConversationRecord,
+  FileRecord,
+  JobRecord,
+  LlmConfigRecord,
+  MessageRecord,
+  Repository,
+} from './types.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -41,6 +48,24 @@ const toJob = (r: Row): JobRecord => ({
   timings: r.timings ?? {},
   createdAt: r.created_at,
   updatedAt: r.updated_at,
+});
+
+const toConversation = (r: Row): ConversationRecord => ({
+  id: r.id,
+  ownerId: r.owner_id,
+  title: r.title,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+const toMessage = (r: Row): MessageRecord => ({
+  id: r.id,
+  conversationId: r.conversation_id,
+  role: r.role,
+  text: r.text,
+  attachmentIds: r.attachment_ids ?? [],
+  jobId: r.job_id,
+  createdAt: r.created_at,
 });
 
 const toLlm = (r: Row): LlmConfigRecord => ({
@@ -263,5 +288,54 @@ export class PostgresRepository implements Repository {
 
   async deleteLlmConfig(id: string): Promise<void> {
     await this.pool.query('DELETE FROM llm_configs WHERE id = $1', [id]);
+  }
+
+  async createConversation(r: ConversationRecord): Promise<ConversationRecord> {
+    const { rows } = await this.pool.query(
+      'INSERT INTO conversations (id, owner_id, title, created_at, updated_at) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [r.id, r.ownerId, r.title, r.createdAt, r.updatedAt],
+    );
+    return toConversation(rows[0]);
+  }
+
+  async getConversation(id: string): Promise<ConversationRecord | null> {
+    const { rows } = await this.pool.query('SELECT * FROM conversations WHERE id = $1', [id]);
+    return rows[0] ? toConversation(rows[0]) : null;
+  }
+
+  async listConversations(ownerId: string, limit: number): Promise<ConversationRecord[]> {
+    const { rows } = await this.pool.query(
+      'SELECT * FROM conversations WHERE owner_id = $1 ORDER BY updated_at DESC LIMIT $2',
+      [ownerId, limit],
+    );
+    return rows.map(toConversation);
+  }
+
+  async touchConversation(id: string, title?: string): Promise<void> {
+    await this.pool.query(
+      'UPDATE conversations SET updated_at = now(), title = COALESCE($2, title) WHERE id = $1',
+      [id, title ?? null],
+    );
+  }
+
+  async deleteConversation(id: string): Promise<void> {
+    await this.pool.query('DELETE FROM conversations WHERE id = $1', [id]);
+  }
+
+  async addMessage(r: MessageRecord): Promise<MessageRecord> {
+    const { rows } = await this.pool.query(
+      `INSERT INTO messages (id, conversation_id, role, text, attachment_ids, job_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [r.id, r.conversationId, r.role, r.text, r.attachmentIds, r.jobId, r.createdAt],
+    );
+    return toMessage(rows[0]);
+  }
+
+  async listMessages(conversationId: string, limit: number): Promise<MessageRecord[]> {
+    const { rows } = await this.pool.query(
+      'SELECT * FROM (SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT $2) t ORDER BY created_at',
+      [conversationId, limit],
+    );
+    return rows.map(toMessage);
   }
 }

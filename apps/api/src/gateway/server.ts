@@ -6,6 +6,7 @@ import { ZodError } from 'zod';
 import { config } from '../core/config.js';
 import { AppError } from '../core/errors.js';
 import { logger } from '../core/logger.js';
+import { chatRoutes } from './routes/chat.js';
 import { fileRoutes } from './routes/files.js';
 import { llmRoutes } from './routes/llm.js';
 import { processRoutes } from './routes/process.js';
@@ -76,6 +77,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(systemRoutes);
   await app.register(fileRoutes);
   await app.register(processRoutes);
+  await app.register(chatRoutes);
   await app.register(llmRoutes);
 
   return app;

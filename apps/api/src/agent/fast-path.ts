@@ -34,6 +34,12 @@ const FILLER = new Set([
   'size', 'quality', 'aspect', 'ratio', 'each', 'all', 'them', 'one', 'single', 'same',
   'exactly', 'about', 'around', 'approximately', 'under', 'below', 'over', 'max', 'maximum',
   'least', 'most', 'per', 'from', 'out', 'up', 'down', 'on', 'off', 'new', 'copy',
+  // Conversational connectives. A one-shot prompt box never sees these, but a
+  // chat thread is full of them - "now convert it to png", "also make it
+  // smaller" - and treating them as unrecognised sends an easy turn to a model.
+  'now', 'next', 'also', 'instead', 'again', 'just', 'actually', 'ok', 'okay',
+  'but', 'so', 'still', 'too', 'as well', 'lets', "let's", 'go', 'ahead', 'sure',
+  'yes', 'no', 'thanks', 'thank',
   // Format nouns: naming the thing you are holding is not an instruction.
   //
   // INVARIANT: nothing in this set may also be a word a matcher below treats as

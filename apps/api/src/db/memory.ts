@@ -1,5 +1,12 @@
 import { notFound } from '../core/errors.js';
-import type { FileRecord, JobRecord, LlmConfigRecord, Repository } from './types.js';
+import type {
+  ConversationRecord,
+  FileRecord,
+  JobRecord,
+  LlmConfigRecord,
+  MessageRecord,
+  Repository,
+} from './types.js';
 
 /**
  * In-process metadata store. Selected automatically when DATABASE_URL is unset
@@ -11,6 +18,8 @@ export class MemoryRepository implements Repository {
   private readonly files = new Map<string, FileRecord>();
   private readonly jobs = new Map<string, JobRecord>();
   private readonly llm = new Map<string, LlmConfigRecord>();
+  private readonly conversations = new Map<string, ConversationRecord>();
+  private readonly messages = new Map<string, MessageRecord[]>();
 
   async init(): Promise<void> {}
   async ping(): Promise<boolean> {
@@ -88,5 +97,43 @@ export class MemoryRepository implements Repository {
 
   async deleteLlmConfig(id: string): Promise<void> {
     this.llm.delete(id);
+  }
+
+  async createConversation(record: ConversationRecord): Promise<ConversationRecord> {
+    this.conversations.set(record.id, record);
+    return record;
+  }
+
+  async getConversation(id: string): Promise<ConversationRecord | null> {
+    return this.conversations.get(id) ?? null;
+  }
+
+  async listConversations(ownerId: string, limit: number): Promise<ConversationRecord[]> {
+    return [...this.conversations.values()]
+      .filter((c) => c.ownerId === ownerId)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .slice(0, limit);
+  }
+
+  async touchConversation(id: string, title?: string): Promise<void> {
+    const current = this.conversations.get(id);
+    if (!current) return;
+    this.conversations.set(id, { ...current, updatedAt: new Date(), title: title ?? current.title });
+  }
+
+  async deleteConversation(id: string): Promise<void> {
+    this.conversations.delete(id);
+    this.messages.delete(id);
+  }
+
+  async addMessage(record: MessageRecord): Promise<MessageRecord> {
+    const thread = this.messages.get(record.conversationId) ?? [];
+    thread.push(record);
+    this.messages.set(record.conversationId, thread);
+    return record;
+  }
+
+  async listMessages(conversationId: string, limit: number): Promise<MessageRecord[]> {
+    return (this.messages.get(conversationId) ?? []).slice(-limit);
   }
 }

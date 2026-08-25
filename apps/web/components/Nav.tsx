@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const TABS = [
-  { href: '/', label: 'Workbench' },
+  { href: '/', label: 'Chat' },
   { href: '/settings', label: 'Settings' },
 ];
 
@@ -13,7 +13,7 @@ export function Nav() {
   return (
     <header className="top">
       <h1 className="brand">
-        Convertara<span>files in, exactly what you asked for out</span>
+        Convertara<span>settings</span>
       </h1>
       <nav className="tabs">
         {TABS.map((tab) => (
