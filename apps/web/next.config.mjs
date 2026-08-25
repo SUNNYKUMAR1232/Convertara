@@ -1,4 +1,7 @@
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -9,6 +12,17 @@ const nextConfig = {
   // through fileURLToPath: `new URL().pathname` yields "/D:/..." on Windows and
   // tracing then silently emits nothing.
   outputFileTracingRoot: fileURLToPath(new URL('../../', import.meta.url)),
+  // `@/*` is declared in tsconfig.json, but Next only reads those paths when the
+  // `typescript` package is resolvable. A host that installs with NODE_ENV set
+  // to exactly "production" drops devDependencies, typescript goes with them,
+  // and every `@/components/...` import fails to resolve while the error blames
+  // the import rather than the missing compiler. Declaring the alias here keeps
+  // resolution working whether or not devDependencies made it into the image.
+  webpack: (config) => {
+    config.resolve.alias['@'] = here;
+    return config;
+  },
+  turbopack: { resolveAlias: { '@/*': './*' } },
 };
 
 export default nextConfig;
