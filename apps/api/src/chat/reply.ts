@@ -21,14 +21,34 @@ export interface ReplyFile {
  * for no latency and no cost. The model is for understanding the request, not
  * for narrating the receipt.
  */
-export function describeResult(job: JobRecord, inputs: ReplyFile[], outputs: ReplyFile[]): string {
+export interface SelectionNote {
+  chosenCount: number;
+  totalCount: number;
+  skipped: string;
+  reason?: string;
+}
+
+export function describeResult(
+  job: JobRecord,
+  inputs: ReplyFile[],
+  outputs: ReplyFile[],
+  selection?: SelectionNote,
+): string {
   if (job.status === 'failed') {
     if (!job.error) return 'That did not work, and I could not produce a file.';
     return humaniseError(new AppError(job.error.code as ErrorCode, job.error.message));
   }
   if (outputs.length === 0) return 'That finished, but produced nothing to download.';
 
-  const parts: string[] = [what(job, inputs, outputs)];
+  const parts: string[] = [what(job, inputs, outputs, selection)];
+
+  // Silently processing a subset is the thing that erodes trust in a bulk tool,
+  // so say which files were used and which were not.
+  if (selection) {
+    parts.push(
+      `That was ${selection.chosenCount} of ${selection.totalCount} attached - I left ${selection.skipped} out.`,
+    );
+  }
 
   const constraints = job.plan ? resolveConstraints(job.plan.constraints) : undefined;
   const window = constraints ? describeWindow(constraints) : undefined;
@@ -53,24 +73,31 @@ export function describeResult(job: JobRecord, inputs: ReplyFile[], outputs: Rep
   return parts.join(' ');
 }
 
-function what(job: JobRecord, inputs: ReplyFile[], outputs: ReplyFile[]): string {
+function what(
+  job: JobRecord,
+  inputs: ReplyFile[],
+  outputs: ReplyFile[],
+  selection?: SelectionNote,
+): string {
   const ops = job.plan?.operations.map((o) => o.op) ?? [];
   const first = outputs[0];
   if (!first) return 'Done.';
 
+  // The count that matters is what was worked on, not what was attached.
+  const usedCount = selection?.chosenCount ?? inputs.length;
   const inputBytes = inputs.reduce((n, f) => n + f.bytes, 0);
   const outputBytes = outputs.reduce((n, f) => n + f.bytes, 0);
 
   // Several files in, one archive out.
-  if (outputs.length === 1 && first.mime === 'application/zip' && inputs.length > 1 && ops.includes('archive.create')) {
-    return `Zipped ${plural(inputs.length, 'file')} into ${first.filename} (${formatBytes(first.bytes)}).`;
+  if (outputs.length === 1 && first.mime === 'application/zip' && ops.includes('archive.create')) {
+    return `Zipped ${plural(usedCount, 'file')} into ${first.filename} (${formatBytes(first.bytes)}).`;
   }
   if (ops.includes('archive.extract')) {
     return `Unpacked ${plural(outputs.length, 'file')} from the archive.`;
   }
   if (ops.includes('pdf.merge')) {
     const pages = typeof first.meta.pages === 'number' ? `, ${first.meta.pages} pages` : '';
-    return `Merged ${inputs.length} PDFs into ${first.filename} (${formatBytes(first.bytes)}${pages}).`;
+    return `Merged ${usedCount} PDFs into ${first.filename} (${formatBytes(first.bytes)}${pages}).`;
   }
   if (ops.includes('pdf.split')) {
     // Several outputs get bundled into one zip before they reach here, so the
@@ -99,8 +126,10 @@ function what(job: JobRecord, inputs: ReplyFile[], outputs: ReplyFile[]): string
   const converted = ops.includes('image.convert') || ops.includes('pdf.from-images');
   const resized = ops.includes('image.resize');
 
+  const producedMime = bundledCount(outputs) !== undefined ? producedFormat(job) : first.mime;
+
   const bits: string[] = [];
-  if (converted) bits.push(`Converted to ${label(first.mime)}`);
+  if (converted) bits.push(`Converted to ${label(producedMime)}`);
   else if (resized) bits.push('Resized that');
   else if (shrank) bits.push('Compressed that');
   else bits.push('Done');
@@ -119,6 +148,13 @@ function what(job: JobRecord, inputs: ReplyFile[], outputs: ReplyFile[]): string
   const spread = bundledCount(outputs) ?? outputs.length;
   const many = spread > 1 ? ` across ${plural(spread, 'file')}` : '';
   return `${bits.join(' ')}${many} - ${size}.`;
+}
+
+/** The format the plan actually targeted, for when results were zipped up. */
+function producedFormat(job: JobRecord): string {
+  const convert = job.plan?.operations.find((o) => o.op === 'image.convert');
+  const format = (convert?.params as { format?: string } | undefined)?.format ?? job.plan?.constraints.format;
+  return format ? `image/${format}` : 'application/zip';
 }
 
 const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? '' : 's'}`;

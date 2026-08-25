@@ -13,11 +13,16 @@ CREATE TABLE IF NOT EXISTS jobs (
   progress     REAL        NOT NULL DEFAULT 0,
   stage        TEXT,
   evaluation   JSONB,
+  selection    JSONB,
   error        JSONB,
   timings      JSONB       NOT NULL DEFAULT '{}',
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Added after the table shipped, so it needs an ALTER as well as the CREATE
+-- above: CREATE TABLE IF NOT EXISTS is a no-op on an existing database.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS selection JSONB;
 
 CREATE INDEX IF NOT EXISTS jobs_owner_created_idx ON jobs (owner_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs (status) WHERE status IN ('queued','running');

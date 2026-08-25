@@ -228,6 +228,7 @@ async function* runOperation(
       done,
       files.map(toReplyFile),
       outputs.map(toReplyFile),
+      done.selection ?? undefined,
     );
 
     yield { type: 'delta', text };

@@ -1,5 +1,6 @@
 import type { Constraints, Operation, Plan } from '../core/plan.js';
 import { planSchema } from '../core/plan.js';
+import type { Selector } from '../core/plan.js';
 import { parseSize, parseTolerance } from '../core/units.js';
 import type { WorkFile } from '../router/types.js';
 import { domainForMime } from '../execution/executor.js';
@@ -70,6 +71,7 @@ const VAGUE = /\b(best|better|nice|good|suitable|appropriate|optimi[sz]e for|loo
 interface Draft {
   operations: Operation[];
   constraints: Partial<Constraints>;
+  select?: Selector;
   bundle?: 'auto' | 'single' | 'zip';
 }
 
@@ -84,8 +86,6 @@ export function planFromRules(prompt: string, files: WorkFile[]): FastPathResult
   if (VAGUE.test(text)) return undefined;
 
   const lower = text.toLowerCase();
-  const domains = new Set(files.map((f) => domainForMime(f.mime)));
-  const domain = domains.size === 1 ? [...domains][0] : 'mixed';
 
   const draft: Draft = { operations: [], constraints: {} };
   const consumed: Array<[number, number]> = [];
@@ -96,6 +96,16 @@ export function planFromRules(prompt: string, files: WorkFile[]): FastPathResult
     consumed.push([match.index, match.index + match[0].length]);
     return match;
   };
+
+  // Selection first, because it decides which domain the rest of the rules are
+  // reasoning about. On a mixed batch "merge the PDFs" has to see `pdf`, not
+  // `mixed`, or it gives up and pays for a model to state the obvious.
+  const selector = parseSelector(lower, take);
+  if (selector) draft.select = selector;
+
+  const selected = applySelector(files, selector);
+  const domains = new Set(selected.map((f) => domainForMime(f.mime)));
+  const domain = domains.size === 1 ? [...domains][0] : 'mixed';
 
   // --- constraints -----------------------------------------------------------
   const sizeMatch = /(?:under|below|less than|at most|no more than|max(?:imum)?(?: of)?|to|be|around|about|approximately|~)?\s*(\d+(?:\.\d+)?)\s*(kb|mb|gb|kib|mib|kilobytes?|megabytes?)\b/i.exec(lower);
@@ -209,6 +219,7 @@ export function planFromRules(prompt: string, files: WorkFile[]): FastPathResult
   const parsed = planSchema.safeParse({
     intent: text.slice(0, 120),
     operations: dedupe(draft.operations),
+    ...(draft.select ? { select: draft.select } : {}),
     constraints: draft.constraints,
     output: { bundle: draft.bundle ?? 'auto' },
     source: 'fast-path',
@@ -217,6 +228,94 @@ export function planFromRules(prompt: string, files: WorkFile[]): FastPathResult
   if (!parsed.success) return undefined;
 
   return { plan: parsed.data, reason: 'matched deterministic rules' };
+}
+
+const DOMAIN_NOUNS: Record<string, string> = {
+  image: 'image',
+  images: 'image',
+  photo: 'image',
+  photos: 'image',
+  picture: 'image',
+  pictures: 'image',
+  pic: 'image',
+  pics: 'image',
+  pdf: 'pdf',
+  pdfs: 'pdf',
+  zip: 'archive',
+  zips: 'archive',
+  archive: 'archive',
+  archives: 'archive',
+};
+
+const FORMAT_NOUNS = new Set(['png', 'pngs', 'jpg', 'jpgs', 'jpeg', 'jpegs', 'webp', 'webps', 'gif', 'gifs', 'tiff', 'tiffs', 'avif', 'avifs']);
+
+/**
+ * Reads "the images", "all the PDFs", "only the pngs", "the first 3" out of a
+ * bulk request. Deliberately narrow: a selector that guesses wrong quietly
+ * processes the wrong files, which is worse than not having one.
+ */
+function parseSelector(lower: string, take: (re: RegExp) => RegExpExecArray | undefined): Selector | undefined {
+  const selector: Selector = { order: 'given' };
+  let found = false;
+
+  // A determiner is what separates a selection from a verb or a destination.
+  // "zip the images" selects images; the bare "zip" is the instruction. Reading
+  // any loose noun as a selection makes "zip these" match nothing at all, and
+  // "convert to pdf" filter down to the PDFs instead of producing one.
+  // The optional "first N" is here so "the first 2 images" still finds `images`.
+  const nouns = /\b(?:all|every|each|only|just|the)\s+(?:the\s+)?(?:first\s+\d{1,3}\s+)?([a-z]+)\b/g;
+  for (let m = nouns.exec(lower); m !== null; m = nouns.exec(lower)) {
+    const word = m[1] ?? '';
+
+    const domain = DOMAIN_NOUNS[word] ?? DOMAIN_NOUNS[`${word}s`];
+    if (domain) {
+      selector.domains = [...new Set([...(selector.domains ?? []), domain])];
+      found = true;
+      continue;
+    }
+    if (FORMAT_NOUNS.has(word) || FORMAT_NOUNS.has(`${word}s`)) {
+      selector.formats = [...new Set([...(selector.formats ?? []), word.replace(/s$/, '')])];
+      found = true;
+    }
+  }
+
+  // "the png files", "jpg ones"
+  const typed = /\b(png|jpe?g|webp|gif|tiff?|avif)s?\s+(?:files?|ones|images?)\b/.exec(lower);
+  if (typed?.[1]) {
+    selector.formats = [...new Set([...(selector.formats ?? []), typed[1]])];
+    found = true;
+  }
+
+  const firstN = take(/\bfirst\s+(\d{1,3})\b/);
+  if (firstN?.[1]) {
+    selector.limit = Number(firstN[1]);
+    found = true;
+  }
+
+  const biggest = take(/\b(biggest|largest|smallest)\b/);
+  if (biggest) {
+    selector.order = biggest[1] === 'smallest' ? 'size-asc' : 'size-desc';
+    selector.limit ??= 1;
+    found = true;
+  }
+
+  return found ? selector : undefined;
+}
+
+/** Mirrors the runtime selection closely enough to choose the right rules. */
+function applySelector(files: WorkFile[], selector: Selector | undefined): WorkFile[] {
+  if (!selector) return files;
+  let chosen = files;
+
+  if (selector.domains?.length) {
+    const wanted = new Set(selector.domains);
+    chosen = chosen.filter((f) => wanted.has(domainForMime(f.mime)));
+  }
+  if (selector.formats?.length) {
+    const wanted = new Set(selector.formats.map((f) => (f === 'jpg' ? 'jpeg' : f === 'tif' ? 'tiff' : f)));
+    chosen = chosen.filter((f) => wanted.has(f.mime.split('/')[1] ?? ''));
+  }
+  return chosen.length > 0 ? chosen : files;
 }
 
 /** Every content word must have been claimed by a matcher, or we are guessing. */

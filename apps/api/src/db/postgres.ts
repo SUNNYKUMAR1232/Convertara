@@ -44,6 +44,7 @@ const toJob = (r: Row): JobRecord => ({
   progress: Number(r.progress ?? 0),
   stage: r.stage,
   evaluation: r.evaluation,
+  selection: r.selection ?? null,
   error: r.error,
   timings: r.timings ?? {},
   createdAt: r.created_at,
@@ -94,11 +95,12 @@ const JOB_COLUMNS: Record<string, string> = {
   progress: 'progress',
   stage: 'stage',
   evaluation: 'evaluation',
+  selection: 'selection',
   error: 'error',
   timings: 'timings',
 };
 
-const JSON_COLUMNS = new Set(['plan', 'evaluation', 'error', 'timings']);
+const JSON_COLUMNS = new Set(['plan', 'evaluation', 'selection', 'error', 'timings']);
 
 export class PostgresRepository implements Repository {
   readonly driver = 'postgres' as const;
@@ -164,8 +166,8 @@ export class PostgresRepository implements Repository {
   async createJob(r: JobRecord): Promise<JobRecord> {
     const { rows } = await this.pool.query(
       `INSERT INTO jobs (id, owner_id, status, prompt, plan, plan_source, input_file_ids, output_file_ids,
-                         progress, stage, evaluation, error, timings, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+                         progress, stage, evaluation, selection, error, timings, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [
         r.id,
         r.ownerId,
@@ -178,6 +180,7 @@ export class PostgresRepository implements Repository {
         r.progress,
         r.stage,
         r.evaluation ? JSON.stringify(r.evaluation) : null,
+        r.selection ? JSON.stringify(r.selection) : null,
         r.error ? JSON.stringify(r.error) : null,
         JSON.stringify(r.timings),
         r.createdAt,

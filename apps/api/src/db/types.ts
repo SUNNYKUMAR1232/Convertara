@@ -37,6 +37,8 @@ export interface JobRecord {
   progress: number;
   stage: string | null;
   evaluation: Evaluation | null;
+  /** Which attached files the plan actually used, when not all of them. */
+  selection: { chosenCount: number; totalCount: number; skipped: string; reason?: string } | null;
   error: { code: string; message: string } | null;
   timings: Record<string, number>;
   createdAt: Date;

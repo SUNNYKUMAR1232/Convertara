@@ -31,6 +31,28 @@ export async function buildPlanJsonSchema(): Promise<Record<string, unknown>> {
           required: ['op', 'params'],
         },
       },
+      select: {
+        type: 'object',
+        description:
+          'Which attached files to use. Omit to use all of them. Set this when the user names a subset - "the images", "the PDFs", "the big ones".',
+        properties: {
+          domains: {
+            type: 'array',
+            items: { type: 'string', enum: ['image', 'pdf', 'archive'] },
+            description: 'Whole families of file, e.g. ["image"] for "compress the images".',
+          },
+          formats: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Specific formats, lowercase, e.g. ["png"] for "the PNGs".',
+          },
+          minBytes: { type: 'number', description: 'Only files at least this big.' },
+          maxBytes: { type: 'number', description: 'Only files at most this big.' },
+          nameContains: { type: 'string' },
+          limit: { type: 'number', description: 'Take only this many, after ordering.' },
+          order: { type: 'string', enum: ['given', 'name', 'size-asc', 'size-desc'] },
+        },
+      },
       constraints: {
         type: 'object',
         description: 'Requirements the finished output must satisfy. The system enforces these, not you.',

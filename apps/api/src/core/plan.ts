@@ -54,11 +54,35 @@ export const constraintsSchema = z
   .default({ minQuality: 30, stripMetadata: false });
 export type Constraints = z.infer<typeof constraintsSchema>;
 
+/**
+ * Which of the attached files a plan applies to.
+ *
+ * Bulk requests are the normal case once someone unzips a folder, and "compress
+ * the images" has to mean the images rather than everything. Selection is part
+ * of the plan so it is inspectable and testable like any other decision.
+ */
+export const selectorSchema = z.object({
+  /** `image`, `pdf`, `archive`. */
+  domains: z.array(z.string().max(16)).max(6).optional(),
+  /** Concrete formats, e.g. `png`, `jpeg`. */
+  formats: z.array(z.string().max(8)).max(12).optional(),
+  minBytes: z.number().int().positive().optional(),
+  maxBytes: z.number().int().positive().optional(),
+  nameContains: z.string().max(80).optional(),
+  /** 1-based positions, applied after ordering. */
+  indices: z.array(z.number().int().positive().max(1000)).max(64).optional(),
+  limit: z.number().int().positive().max(1000).optional(),
+  order: z.enum(['given', 'name', 'size-asc', 'size-desc']).default('given'),
+});
+export type Selector = z.infer<typeof selectorSchema>;
+
 export const planSchema = z.object({
   version: z.literal(1).default(1),
   /** Short machine-readable summary of what the user asked for. */
   intent: z.string().min(1).max(200).default('process'),
   operations: z.array(operationSchema).min(1).max(12),
+  /** Omit to use every attached file. */
+  select: selectorSchema.optional(),
   constraints: constraintsSchema,
   output: z
     .object({

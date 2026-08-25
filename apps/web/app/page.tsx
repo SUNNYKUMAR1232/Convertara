@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AttachmentTray } from '@/components/AttachmentTray';
 import { ImageEditor } from '@/components/ImageEditor';
 import type { Adjustment } from '@/components/ImageEditor';
 import { Message } from '@/components/Message';
@@ -27,6 +28,8 @@ export default function Chat() {
   const [dragging, setDragging] = useState(false);
   const [sidebar, setSidebar] = useState(false);
   const [editing, setEditing] = useState<Attachment | null>(null);
+  // Everything is selected until someone says otherwise.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
 
   const fileInput = useRef<HTMLInputElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -46,6 +49,7 @@ export default function Chat() {
     try {
       const uploaded = await uploadFiles(Array.from(files));
       setPending((current) => [...current, ...uploaded]);
+      setPicked((current) => new Set([...current, ...uploaded.map((f) => f.id)]));
       composer.current?.focus();
     } catch (error) {
       setMessages((current) => [...current, systemNote((error as Error).message)]);
@@ -59,6 +63,7 @@ export default function Chat() {
     setConversationId(id);
     setMessages(loaded.messages);
     setPending([]);
+    setPicked(new Set());
     setSidebar(false);
   }
 
@@ -66,16 +71,18 @@ export default function Chat() {
     setConversationId(undefined);
     setMessages([]);
     setPending([]);
+    setPicked(new Set());
     setSidebar(false);
   }
 
   async function send() {
     const text = input.trim();
-    if ((text === '' && pending.length === 0) || busy) return;
+    const attachments = pending.filter((f) => picked.has(f.id));
+    if ((text === '' && attachments.length === 0) || busy) return;
 
-    const attachments = pending;
     setInput('');
     setPending([]);
+    setPicked(new Set());
     setBusy(true);
 
     // The assistant bubble goes in immediately and fills as tokens land.
@@ -274,20 +281,16 @@ export default function Chat() {
 
         <div className="composer-wrap">
           {pending.length > 0 && (
-            <div className="pending">
-              {pending.map((file) => (
-                <span className="pill" key={file.id}>
-                  {file.filename}
-                  <em>{formatBytes(file.bytes)}</em>
-                  <button
-                    onClick={() => setPending((current) => current.filter((f) => f.id !== file.id))}
-                    aria-label={`Remove ${file.filename}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
+            <AttachmentTray
+              files={pending}
+              selected={picked}
+              onChange={(next) => {
+                // Dropping a pill from the short list removes it outright;
+                // unticking in the long list only deselects.
+                if (pending.length <= 3) setPending((current) => current.filter((f) => next.has(f.id)));
+                setPicked(next);
+              }}
+            />
           )}
 
           <div className="composer">
@@ -322,7 +325,7 @@ export default function Chat() {
             <button
               className="send"
               onClick={() => void send()}
-              disabled={busy || (input.trim() === '' && pending.length === 0)}
+              disabled={busy || (input.trim() === '' && picked.size === 0)}
               aria-label="Send"
             >
               {busy ? '■' : '↑'}

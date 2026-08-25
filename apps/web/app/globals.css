@@ -1070,3 +1070,83 @@ button.small {
   color: var(--accent);
   border-color: var(--accent);
 }
+
+/* --------------------------------------------------------- attachment tray */
+
+.tray {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.tray-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 9px 11px;
+  font-size: 13px;
+}
+
+.tray-head strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tray-head .muted {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.tray-head .spacer {
+  flex: 1;
+}
+
+.tray-head .chip.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tray-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 6px 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.tray-list li label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 6px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.tray-list li label:hover {
+  background: var(--panel);
+}
+
+.tray-list input[type='checkbox'] {
+  width: auto;
+  margin: 0;
+}
+
+.tray-list .n {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tray-list .s {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+}

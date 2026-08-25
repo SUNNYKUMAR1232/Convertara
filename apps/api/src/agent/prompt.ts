@@ -18,7 +18,11 @@ Rules:
   plain "make it X" is mode "target" with tolerance 0.05 unless a tolerance is stated.
 - When the user cares about quality, raise constraints.minQuality (e.g. 70) so
   the optimizer stops before the image turns to mush, and let the size miss.
-- Keep the plan as short as it can be. One operation is a good plan.`;
+- Keep the plan as short as it can be. One operation is a good plan.
+- With several files attached, set \`select\` when the user means a subset -
+  "compress the images" on a mixed folder is select.domains ["image"]. Leave it
+  out to use everything. You do not need it to avoid type errors: files the
+  first operation cannot accept are dropped automatically.`;
 
 export async function buildUserPrompt(prompt: string, files: WorkFile[]): Promise<string> {
   const capabilities = await describeCapabilities();

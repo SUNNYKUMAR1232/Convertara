@@ -14,6 +14,7 @@ import type { WorkFile } from '../router/types.js';
 import { safeFilename, sniffAndAssert } from '../security/sniff.js';
 import { estimateCost, resolvePlan } from '../router/capability-router.js';
 import { execute } from './executor.js';
+import { narrowForPlan } from './selection.js';
 
 export interface Upload {
   filename: string;
@@ -137,6 +138,7 @@ export async function submit(options: SubmitOptions): Promise<SubmitResult> {
     progress: 0,
     stage: 'planned',
     evaluation: null,
+    selection: null,
     error: null,
     timings: { plan: decision.latencyMs },
     createdAt: now,
@@ -147,8 +149,11 @@ export async function submit(options: SubmitOptions): Promise<SubmitResult> {
 
   // Cost is estimated against the resolved plan, so an unknown capability fails
   // here - before anything is queued - rather than inside a worker.
-  const operations = await resolvePlan(decision.plan, files);
-  const totalBytes = files.reduce((n, f) => n + f.data.length, 0);
+  // Estimate against the files the plan will actually touch, not everything
+  // that was attached.
+  const working = narrowForPlan(files, decision.plan).files;
+  const operations = await resolvePlan(decision.plan, working);
+  const totalBytes = working.reduce((n, f) => n + f.data.length, 0);
   const cost = estimateCost(operations, totalBytes);
 
   const lane: 'sync' | 'async' =
@@ -247,7 +252,12 @@ export async function runJob(jobId: string, signal?: AbortSignal): Promise<JobRe
       stage: 'done',
       outputFileIds: outputs.map((o) => o.id),
       evaluation: result.evaluation,
-      timings: { ...job.timings, ...result.timings, attempts: result.attempts.length },
+      selection: result.selection ?? null,
+      timings: {
+        ...job.timings,
+        ...result.timings,
+        attempts: result.attempts.length,
+      },
       error: failed
         ? {
             code: 'CONSTRAINT_UNSATISFIABLE',

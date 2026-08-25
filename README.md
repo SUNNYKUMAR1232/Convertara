@@ -119,6 +119,35 @@ model at all:
 | "which is smaller, webp or avif?" | Goes to your configured model, streamed token by token. |
 | "do" / "ok" | Says it does not know what you meant and gives examples. A file being attached does not make a message an instruction. |
 
+## Bulk work picks the right files
+
+Drop a folder in and say what you want done. Selection happens before any engine
+runs, so what got chosen is reported exactly rather than guessed at afterwards:
+
+```
+9 files attached - 4 JPEGs, 2 PNGs, 3 PDFs
+
+you > merge the pdfs
+bot > Merged 3 PDFs into merged.pdf (625 B, 6 pages).
+      That was 3 of 9 attached - I left 4 JPEGs and 2 PNGs out.
+
+you > convert the first 2 images to png
+bot > Converted to PNG across 2 files - 1.3 KB.
+      That was 2 of 9 attached - I left 3 PDFs, 2 JPEGs and 2 PNGs out.
+```
+
+Two things make this work. A **selector** is part of the plan - family, format,
+size, name, order, count - so it is inspectable and testable like any other
+decision. And files the opening operation cannot accept are **dropped rather
+than fatal**: "merge the PDFs" on a mixed folder merges the PDFs instead of
+failing on the images. Only a selection that matches nothing is an error.
+
+Silently working on a subset is what erodes trust in a bulk tool, so every reply
+that used fewer files than were attached says so.
+
+When the subset is not describable - four particular photos - the attachment
+tray has counts by type, select all/none, and a checkbox list.
+
 ## Crop, resize and rotate are dragged, not described
 
 "Crop a bit off the left" is a bad sentence and a good drag. Any image the

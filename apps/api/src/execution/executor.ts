@@ -10,6 +10,8 @@ import { registry } from '../router/registry.js';
 import type { EngineContext, WorkFile } from '../router/types.js';
 import { buildZip } from '../engines/archive/index.js';
 import { validateOutputs } from '../validation/validator.js';
+import { domainForMime } from './domain.js';
+import { narrowForPlan } from './selection.js';
 import { solveSizeTarget } from './optimizer.js';
 import type { Attempt } from './optimizer.js';
 
@@ -26,14 +28,11 @@ export interface ExecuteResult {
   satisfied: boolean;
   attempts: Attempt[];
   timings: Record<string, number>;
+  /** What the plan chose to work on, when it did not use everything. */
+  selection?: { chosenCount: number; totalCount: number; skipped: string; reason?: string };
 }
 
-export function domainForMime(mime: string): string {
-  if (mime.startsWith('image/')) return 'image';
-  if (mime === 'application/pdf') return 'pdf';
-  if (mime === 'application/zip' || mime === 'application/x-zip-compressed') return 'archive';
-  return 'unknown';
-}
+export { domainForMime } from './domain.js';
 
 /**
  * Runs a resolved plan end to end: operations, then the deterministic size
@@ -53,10 +52,13 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 
   try {
     const constraints = resolveConstraints(options.plan.constraints);
-    const operations = await resolvePlan(options.plan, options.files);
-    timings.resolve = Date.now() - started;
+    // One narrowing, shared with the cost estimate in submit().
+    const narrowed = narrowForPlan(options.files, options.plan);
+    let files = narrowed.files;
+    const selectionNote = narrowed.note;
 
-    let files = options.files;
+    const operations = await resolvePlan(options.plan, files);
+    timings.resolve = Date.now() - started;
     const totalOps = operations.length;
 
     for (const [index, { capability, params }] of operations.entries()) {
@@ -153,7 +155,14 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     timings.total = Date.now() - started;
     timings.cost = estimateCost(operations, options.files.reduce((n, f) => n + f.data.length, 0));
 
-    return { files, evaluation, satisfied: evaluation.pass, attempts, timings };
+    return {
+      files,
+      evaluation,
+      satisfied: evaluation.pass,
+      attempts,
+      timings,
+      ...(selectionNote ? { selection: selectionNote } : {}),
+    };
   } finally {
     clearTimeout(timeout);
   }
