@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { providerInfo } from './providers.js';
 import { LlmError } from './types.js';
 import type { LlmSettings } from './types.js';
 
@@ -35,6 +36,7 @@ export async function* converse(
       return;
     case 'openai':
     case 'custom':
+    case 'groq':
       yield* openaiStream(request, settings);
       return;
     default:
@@ -70,7 +72,11 @@ async function* anthropicStream(request: ConverseRequest, settings: LlmSettings)
 }
 
 async function* openaiStream(request: ConverseRequest, settings: LlmSettings): AsyncGenerator<string> {
-  const base = (settings.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
+  // Take the default from the provider catalogue, not a literal: every
+  // OpenAI-compatible provider shares this function, and defaulting to
+  // OpenAI would send a Groq key to the wrong host.
+  const fallback = providerInfo(settings.provider)?.defaultBaseUrl ?? 'https://api.openai.com/v1';
+  const base = (settings.baseUrl ?? fallback).replace(/\/+$/, '');
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (settings.apiKey) headers.authorization = `Bearer ${settings.apiKey}`;
 
