@@ -55,10 +55,29 @@ const schema = z.object({
   ARCHIVE_MAX_RATIO: int(120),
 
   /**
-   * How many jobs one worker process handles at once. libvips keeps its own
-   * thread pool underneath, so this is about concurrent jobs, not cores.
+   * How many jobs one worker process handles at once, and the ceiling on the
+   * optimizer's per-file fan-out. libvips keeps its own thread pool underneath,
+   * so this is about concurrent jobs, not cores.
+   *
+   * Peak memory is roughly WORKER_CONCURRENCY x largest input x 3 (source,
+   * intermediate, encoded candidate). Raise it only with that in mind.
    */
   WORKER_CONCURRENCY: int(4),
+
+  /** Aggregate ceiling across one multipart request, not just per file. */
+  MAX_REQUEST_BYTES: int(400 * 1024 * 1024),
+
+  /**
+   * Honour `x-owner-id`. Off by default: without an auth proxy in front, a
+   * client-supplied header is a tenant switch, not an identity.
+   */
+  TRUST_OWNER_HEADER: bool(false),
+
+  /** Allow LLM endpoints on loopback/private ranges. Self-hosted only. */
+  LLM_ALLOW_PRIVATE_ENDPOINTS: bool(false),
+
+  /** Permit the in-memory metadata store and inline queue in production. */
+  ALLOW_EPHEMERAL_STATE: bool(false),
 
   /** `auto` = fast path when possible, LLM otherwise. */
   AI_MODE: z.enum(['auto', 'always', 'never']).default('auto'),

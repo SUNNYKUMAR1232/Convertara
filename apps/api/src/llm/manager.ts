@@ -7,6 +7,7 @@ import { anthropicAdapter } from './adapters/anthropic.js';
 import { geminiAdapter } from './adapters/gemini.js';
 import { ollamaAdapter } from './adapters/ollama.js';
 import { customAdapter, openaiAdapter } from './adapters/openai.js';
+import { assertSafeEndpoint } from '../security/endpoint-guard.js';
 import { decryptSecret } from './crypto.js';
 import { LlmError } from './types.js';
 import type { LlmAdapter, LlmSettings, StructuredRequest, StructuredResponse } from './types.js';
@@ -35,6 +36,15 @@ export interface TestResult {
  * API key, picks a model, and nothing else in the system changes.
  */
 class LlmManager {
+  /**
+   * Every outbound call funnels through here, including ones using a base URL
+   * that was stored before the policy tightened. Checking at the call site
+   * rather than at save time is what makes that true.
+   */
+  private async guard(settings: LlmSettings): Promise<void> {
+    if (settings.baseUrl) await assertSafeEndpoint(settings.baseUrl);
+  }
+
   adapterFor(provider: LlmProvider): LlmAdapter {
     const adapter = ADAPTERS[provider];
     if (!adapter) throw new AppError('BAD_REQUEST', `Unknown provider: ${provider}`);
@@ -81,6 +91,8 @@ class LlmManager {
       throw new AppError('LLM_UNAVAILABLE', `${settings.provider} needs an API key before it can be used`);
     }
 
+    await this.guard(settings);
+
     try {
       return await adapter.generate(request, settings);
     } catch (error) {
@@ -111,6 +123,7 @@ class LlmManager {
   async test(settings: LlmSettings): Promise<TestResult> {
     const started = Date.now();
     try {
+      await this.guard(settings);
       const response = await this.adapterFor(settings.provider).generate(
         {
           system: 'You verify connectivity. Reply with the exact JSON requested.',
@@ -134,6 +147,7 @@ class LlmManager {
   async listModels(settings: LlmSettings): Promise<string[]> {
     const adapter = this.adapterFor(settings.provider);
     if (!adapter.listModels) return [];
+    await this.guard(settings);
     return adapter.listModels(settings);
   }
 }

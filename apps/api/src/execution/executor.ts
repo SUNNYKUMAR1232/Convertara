@@ -109,29 +109,30 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
         message: 'Hitting the size target',
       });
 
-      files = await Promise.all(
-        files.map(async (file) => {
-          const optimizer = registry.optimizerFor(domainForMime(file.mime));
-          if (!optimizer?.supports(file)) return file;
+      // Bounded on purpose: an unbounded Promise.all over a 64-file batch is up
+      // to 15 encodes each, all at once, and the box dies before the queue
+      // notices. Peak memory is roughly this limit x largest input x 3.
+      files = await mapWithLimit(files, cfg.WORKER_CONCURRENCY, async (file) => {
+        const optimizer = registry.optimizerFor(domainForMime(file.mime));
+        if (!optimizer?.supports(file)) return file;
 
-          const ctx: EngineContext = {
-            logger: logger.child({ jobId: options.jobId, op: 'optimize' }),
-            signal,
-            constraints,
-            progress: (fraction) =>
-              bus.publish({
-                jobId: options.jobId,
-                type: 'progress',
-                progress: (totalOps + fraction) / (totalOps + 1),
-                stage: 'optimize',
-              }),
-          };
+        const ctx: EngineContext = {
+          logger: logger.child({ jobId: options.jobId, op: 'optimize' }),
+          signal,
+          constraints,
+          progress: (fraction) =>
+            bus.publish({
+              jobId: options.jobId,
+              type: 'progress',
+              progress: (totalOps + fraction) / (totalOps + 1),
+              stage: 'optimize',
+            }),
+        };
 
-          const solution = await solveSizeTarget(file, constraints, optimizer, ctx);
-          attempts.push(...solution.attempts);
-          return solution.file;
-        }),
-      );
+        const solution = await solveSizeTarget(file, constraints, optimizer, ctx);
+        attempts.push(...solution.attempts);
+        return solution.file;
+      });
       timings.optimize = Date.now() - optimiseStarted;
     }
 
@@ -145,6 +146,28 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/** Promise.all with a ceiling, preserving input order. */
+async function mapWithLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      const item = items[index];
+      if (item !== undefined) results[index] = await fn(item);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
 }
 
 async function bundle(files: WorkFile[], plan: Plan): Promise<WorkFile[]> {

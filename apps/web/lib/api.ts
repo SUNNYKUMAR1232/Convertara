@@ -38,7 +38,8 @@ export interface JobOutput {
 
 export interface Job {
   id: string;
-  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  /** `partial` = it ran and produced output that misses a constraint. */
+  status: 'queued' | 'running' | 'succeeded' | 'partial' | 'failed';
   stage: string | null;
   progress: number;
   prompt: string | null;

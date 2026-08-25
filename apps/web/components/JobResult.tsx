@@ -64,8 +64,11 @@ export function JobResult({ job }: { job: Job }) {
           )}
         </h2>
 
+        {/* `partial` is a warning with a working download attached, not an
+            error. Rendering it red would tell the user to throw the file away. */}
         {job.error && (
-          <div className={`alert ${job.outputs.length > 0 ? 'warn' : 'bad'}`} style={{ marginBottom: 12 }}>
+          <div className={`alert ${job.status === 'partial' ? 'warn' : 'bad'}`} style={{ marginBottom: 12 }}>
+            {job.status === 'partial' ? 'Closest we could get: ' : ''}
             {job.error.message}
           </div>
         )}

@@ -30,6 +30,16 @@ export async function ingest(ownerId: string, uploads: Upload[]): Promise<FileRe
     throw new AppError('BAD_REQUEST', `At most ${cfg.MAX_FILES_PER_REQUEST} files per request`);
   }
 
+  // Per-file limits do not bound a request: 64 files just under the cap is
+  // still 12.8GB of heap at the shipped defaults.
+  const requestBytes = uploads.reduce((n, u) => n + u.data.length, 0);
+  if (requestBytes > cfg.MAX_REQUEST_BYTES) {
+    throw new AppError(
+      'FILE_TOO_LARGE',
+      `That request totals ${formatBytes(requestBytes)}, over the ${formatBytes(cfg.MAX_REQUEST_BYTES)} limit for one request`,
+    );
+  }
+
   const records: FileRecord[] = [];
   for (const upload of uploads) {
     const filename = safeFilename(upload.filename);
@@ -174,12 +184,31 @@ export async function runJob(jobId: string, signal?: AbortSignal): Promise<JobRe
       }),
     );
 
-    const result = await execute({
-      jobId,
-      plan: job.plan,
-      files: await loadWorkFiles(records),
-      ...(signal ? { signal } : {}),
+    // SSE is the good path, but a client that polls /v1/jobs/:id would see 0%
+    // for the whole run and read it as hung. Mirror progress into the row,
+    // throttled so a five-encode search is not five extra writes.
+    let lastWrite = 0;
+    const unsubscribe = bus.subscribe(jobId, (event) => {
+      if (typeof event.progress !== 'number') return;
+      const now = Date.now();
+      if (now - lastWrite < 1000) return;
+      lastWrite = now;
+      void repo
+        .updateJob(jobId, { progress: event.progress, stage: event.stage ?? null })
+        .catch(() => undefined);
     });
+
+    let result;
+    try {
+      result = await execute({
+        jobId,
+        plan: job.plan,
+        files: await loadWorkFiles(records),
+        ...(signal ? { signal } : {}),
+      });
+    } finally {
+      unsubscribe();
+    }
 
     const outputs: FileRecord[] = [];
     for (const file of result.files) {
@@ -212,7 +241,8 @@ export async function runJob(jobId: string, signal?: AbortSignal): Promise<JobRe
     const failed = !result.satisfied;
 
     const updated = await repo.updateJob(jobId, {
-      status: failed ? 'failed' : 'succeeded',
+      // `partial`, not `failed`: the run completed and the file is attached.
+      status: failed ? 'partial' : 'succeeded',
       progress: 1,
       stage: 'done',
       outputFileIds: outputs.map((o) => o.id),
@@ -230,7 +260,7 @@ export async function runJob(jobId: string, signal?: AbortSignal): Promise<JobRe
 
     bus.publish({
       jobId,
-      type: failed ? 'failed' : 'succeeded',
+      type: failed ? 'partial' : 'succeeded',
       progress: 1,
       data: { outputs: outputs.map((o) => ({ id: o.id, filename: o.filename, bytes: o.bytes, mime: o.mime })) },
       ...(failed ? { message: updated.error?.message } : {}),

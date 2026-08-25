@@ -38,7 +38,7 @@ export async function processRoutes(app: FastifyInstance): Promise<void> {
 
     if (lane === 'sync') {
       const finished = await runJob(job.id);
-      return reply.code(finished.status === 'failed' ? 200 : 200).send(await present(finished, planReason, lane));
+      return reply.code(200).send(await present(finished, planReason, lane));
     }
 
     await jobQueue().enqueue(job.id);
@@ -114,14 +114,14 @@ export async function processRoutes(app: FastifyInstance): Promise<void> {
 
     send({ jobId: id, type: 'snapshot', data: await present(job), at: new Date().toISOString() });
 
-    if (job.status === 'succeeded' || job.status === 'failed') {
+    if (job.status === 'succeeded' || job.status === 'partial' || job.status === 'failed') {
       reply.raw.end();
       return reply;
     }
 
     const unsubscribe = bus.subscribe(id, (event) => {
       send(event);
-      if (event.type === 'succeeded' || event.type === 'failed') {
+      if (event.type === 'succeeded' || event.type === 'partial' || event.type === 'failed') {
         unsubscribe();
         clearInterval(heartbeat);
         reply.raw.end();

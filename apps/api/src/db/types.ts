@@ -1,7 +1,13 @@
 import type { Plan } from '../core/plan.js';
 import type { Evaluation } from '../constraints/engine.js';
 
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+/**
+ * `partial` means the work ran and produced output that does not satisfy every
+ * constraint - a size target missed without going below the quality floor, say.
+ * It exists because a client that branches on `failed` deletes a file it should
+ * have kept, and that is the single most likely outcome this system has.
+ */
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed';
 
 export interface FileRecord {
   id: string;

@@ -63,6 +63,9 @@ services:
       # Required before any provider API key can be stored.
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env - generate with: openssl rand -hex 32}
       AI_MODE: ${AI_MODE:-auto}
+      # See docs/adr/0001 for why these two default to off.
+      TRUST_OWNER_HEADER: ${TRUST_OWNER_HEADER:-false}
+      LLM_ALLOW_PRIVATE_ENDPOINTS: ${LLM_ALLOW_PRIVATE_ENDPOINTS:-false}
       LLM_PROVIDER: ${LLM_PROVIDER:-}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}

@@ -29,15 +29,34 @@ const FILLER = new Set([
   'a', 'an', 'the', 'this', 'that', 'these', 'those', 'it', 'its', 'my', 'our', 'your',
   'please', 'can', 'you', 'could', 'would', 'to', 'into', 'as', 'in', 'at', 'of', 'for',
   'and', 'then', 'with', 'without', 'file', 'files', 'image', 'images', 'photo', 'photos',
-  'picture', 'pictures', 'document', 'documents', 'doc', 'docs', 'page', 'pages', 'archive',
-  'make', 'turn', 'change', 'set', 'keep', 'be', 'is', 'are', 'me', 'i', 'want', 'need',
+  'picture', 'pictures', 'document', 'documents', 'doc', 'docs', 'page', 'pages',
+  'set', 'be', 'is', 'are', 'me', 'i', 'want', 'need',
   'size', 'quality', 'aspect', 'ratio', 'each', 'all', 'them', 'one', 'single', 'same',
   'exactly', 'about', 'around', 'approximately', 'under', 'below', 'over', 'max', 'maximum',
   'least', 'most', 'per', 'from', 'out', 'up', 'down', 'on', 'off', 'new', 'copy',
   // Format nouns: naming the thing you are holding is not an instruction.
+  //
+  // INVARIANT: nothing in this set may also be a word a matcher below treats as
+  // an operation. A word that is in both gets silently absorbed when its matcher
+  // does not fire, and the result is a dropped instruction with a plausible
+  // looking file attached - the one failure mode worth more than the latency the
+  // fast path saves. `zip` and `archive` live in OPERATION_WORDS for that reason.
+  // Enforced by a test.
   'pdf', 'pdfs', 'jpg', 'jpgs', 'jpeg', 'jpegs', 'png', 'pngs', 'webp', 'avif', 'tiff',
-  'tif', 'gif', 'gifs', 'zip', 'zips', 'archives', 'pic', 'pics', 'img', 'imgs', 'scan', 'scans',
+  'tif', 'gifs', 'pic', 'pics', 'img', 'imgs',
 ]);
+
+/**
+ * Every word that can trigger an operation. Exported so a test can assert it
+ * never intersects FILLER.
+ */
+export const OPERATION_WORDS: readonly string[] = [
+  'convert', 'change', 'turn', 'save', 'export', 'compress', 'shrink', 'reduce', 'smaller',
+  'optimize', 'optimise', 'merge', 'combine', 'join', 'concat', 'concatenate', 'extract',
+  'keep', 'take', 'only', 'split', 'rotate', 'flip', 'flop', 'greyscale', 'grayscale',
+  'monochrome', 'strip', 'remove', 'clear', 'delete', 'zip', 'unzip', 'archive', 'bundle',
+  'package', 'unpack', 'decompress', 'resize', 'scale', 'resample', 'crop', 'metadata', 'exif',
+];
 
 /** Words that signal judgement rather than instruction - hand those to the model. */
 const VAGUE = /\b(best|better|nice|good|suitable|appropriate|optimi[sz]e for|looks?|seem|maybe|probably|sensible|reasonable|professional|web[- ]ready|social|instagram|print|email|whatever|smart|automatically|decide|figure out|you think|recommend)\b/i;
@@ -90,6 +109,9 @@ export function planFromRules(prompt: string, files: WorkFile[]): FastPathResult
         tolerance: tolerance ?? (ceiling ? 0 : 0.05),
         mode: ceiling ? 'max' : 'target',
       };
+      // "make it 300kb", "get this under 2MB" - the verb belongs to the size
+      // phrase here, so consume it rather than leaving it to look unhandled.
+      take(/\b(?:make|get|bring)\b/);
     }
   }
 

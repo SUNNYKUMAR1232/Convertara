@@ -5,7 +5,7 @@ import { logger } from '../core/logger.js';
 
 export interface JobEvent {
   jobId: string;
-  type: 'queued' | 'planned' | 'progress' | 'stage' | 'succeeded' | 'failed';
+  type: 'queued' | 'planned' | 'progress' | 'stage' | 'succeeded' | 'partial' | 'failed';
   progress?: number;
   stage?: string;
   message?: string;

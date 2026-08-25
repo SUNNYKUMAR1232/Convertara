@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS jobs (
   id           UUID PRIMARY KEY,
   owner_id     TEXT        NOT NULL,
-  status       TEXT        NOT NULL CHECK (status IN ('queued','running','succeeded','failed')),
+  status       TEXT        NOT NULL CHECK (status IN ('queued','running','succeeded','partial','failed')),
   prompt       TEXT,
   plan         JSONB,
   plan_source  TEXT,

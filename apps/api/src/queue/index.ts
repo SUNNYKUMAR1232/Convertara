@@ -103,7 +103,19 @@ class InlineQueue implements JobQueue {
   async ping(): Promise<boolean> {
     return true;
   }
-  async close(): Promise<void> {}
+
+  /**
+   * Deploys happen constantly and this is where work gets lost. Stop taking new
+   * jobs, let the running ones finish, then exit.
+   */
+  async close(): Promise<void> {
+    this.pending.length = 0;
+    const deadline = Date.now() + 30_000;
+    while (this.running > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (this.running > 0) logger.warn({ running: this.running }, 'shutting down with jobs still in flight');
+  }
 }
 
 let queue: JobQueue | undefined;
