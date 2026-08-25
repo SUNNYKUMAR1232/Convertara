@@ -84,10 +84,16 @@ export interface LlmConfig {
 const BASE = '/api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // Only declare a JSON body when there is one. Sending the header on a DELETE
+  // makes Fastify reject the request with "Body cannot be empty when
+  // content-type is set to application/json" - which is what stopped the
+  // saved-configuration Delete button from doing anything.
+  const sendsJson = init?.body !== undefined && !(init.body instanceof FormData);
+
   const response = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
-      ...(init?.body instanceof FormData ? {} : { 'content-type': 'application/json' }),
+      ...(sendsJson ? { 'content-type': 'application/json' } : {}),
       ...init?.headers,
     },
   });

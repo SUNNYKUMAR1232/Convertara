@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import type { LlmConfig, ProviderInfo } from '@/lib/api';
 
@@ -36,6 +36,7 @@ export function SettingsPanel() {
   const [models, setModels] = useState<string[]>([]);
   const [status, setStatus] = useState<{ kind: 'ok' | 'bad' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const form = useRef<HTMLDivElement>(null);
 
   const info = providers.find((p) => p.provider === draft.provider);
 
@@ -143,9 +144,10 @@ export function SettingsPanel() {
 
   return (
     <>
-      <section className="panel">
+      <section className="panel" ref={form}>
         <h2>
-          Language model<span className="sub">used only when a request is too vague for the rules engine</span>
+          {draft.id ? `Editing ${draft.label}` : 'Language model'}
+          <span className="sub">used only when a request is too vague for the rules engine</span>
         </h2>
 
         {!secretsConfigured && (
@@ -257,8 +259,19 @@ export function SettingsPanel() {
             Test connection
           </button>
           <button onClick={() => void save()} disabled={busy || draft.model === ''}>
-            Save
+            {draft.id ? 'Save changes' : 'Save'}
           </button>
+          {draft.id && (
+            <button
+              className="ghost"
+              onClick={() => {
+                setDraft(EMPTY);
+                setStatus(null);
+              }}
+            >
+              Cancel
+            </button>
+          )}
         </div>
 
         {status && (
@@ -287,7 +300,10 @@ export function SettingsPanel() {
                 <button
                   type="button"
                   className="ghost small"
-                  onClick={() =>
+                  onClick={() => {
+                    // The form sits above this list, so without scrolling to it
+                    // and saying what is being edited, clicking Edit looks like
+                    // it did nothing at all.
                     setDraft({
                       id: config.id,
                       label: config.label,
@@ -298,8 +314,10 @@ export function SettingsPanel() {
                       temperature: config.temperature,
                       fallbackModel: config.fallbackModel ?? '',
                       isDefault: config.isDefault,
-                    })
-                  }
+                    });
+                    setStatus({ kind: 'info', text: `Editing "${config.label}". Save to apply your changes.` });
+                    form.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
                 >
                   Edit
                 </button>
@@ -307,8 +325,25 @@ export function SettingsPanel() {
                   type="button"
                   className="ghost small"
                   onClick={async () => {
-                    await api.deleteLlmConfig(config.id);
-                    await reload();
+                    // Whatever happens, re-read the list afterwards. A delete
+                    // that throws used to skip the refresh entirely, leaving a
+                    // row for a configuration the server no longer has and no
+                    // message to explain it.
+                    try {
+                      await api.deleteLlmConfig(config.id);
+                      setStatus({ kind: 'ok', text: `Deleted "${config.label}".` });
+                    } catch (error) {
+                      const message = (error as Error).message;
+                      // Already gone is the outcome we wanted anyway.
+                      setStatus(
+                        /not found/i.test(message)
+                          ? { kind: 'info', text: `"${config.label}" was already gone.` }
+                          : { kind: 'bad', text: message },
+                      );
+                    } finally {
+                      if (draft.id === config.id) setDraft(EMPTY);
+                      await reload();
+                    }
                   }}
                 >
                   Delete

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AttachmentTray } from '@/components/AttachmentTray';
+import { ArrowUpIcon, GearIcon, PaperclipIcon, SpinnerIcon, StopIcon } from '@/components/Icons';
 import { ImageEditor } from '@/components/ImageEditor';
 import type { Adjustment } from '@/components/ImageEditor';
 import { Message } from '@/components/Message';
@@ -259,6 +260,7 @@ export default function Chat() {
               setSidebar(false);
             }}
           >
+            <GearIcon />
             Settings
           </button>
         </div>
@@ -272,8 +274,8 @@ export default function Chat() {
             ☰
           </button>
           <span className="title">Convertara</span>
-          <button className="gear" onClick={() => setSettingsOpen(true)}>
-            Settings
+          <button className="gear" onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings">
+            <GearIcon />
           </button>
         </header>
 
@@ -323,7 +325,7 @@ export default function Chat() {
               aria-label="Attach files"
               title="Attach files"
             >
-              {uploading ? '···' : '+'}
+              {uploading ? <SpinnerIcon /> : <PaperclipIcon />}
             </button>
 
             <textarea
@@ -348,9 +350,10 @@ export default function Chat() {
               className="send"
               onClick={() => void send()}
               disabled={busy || (input.trim() === '' && picked.size === 0)}
-              aria-label="Send"
+              aria-label={busy ? 'Working' : 'Send'}
+              title={busy ? 'Working' : 'Send'}
             >
-              {busy ? '■' : '↑'}
+              {busy ? <StopIcon /> : <ArrowUpIcon />}
             </button>
           </div>
 

@@ -527,13 +527,43 @@ a {
   flex: 0 0 auto;
   width: 34px;
   height: 34px;
-  border-radius: 9px;
   border: none;
   cursor: pointer;
-  font-size: 17px;
-  line-height: 1;
   display: grid;
   place-items: center;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.clip svg,
+.send svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.clip {
+  border-radius: 9px;
+}
+
+/* A circle, which is what a send button looks like now. */
+.send {
+  border-radius: 50%;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation-duration: 2.4s;
+  }
 }
 
 .clip {

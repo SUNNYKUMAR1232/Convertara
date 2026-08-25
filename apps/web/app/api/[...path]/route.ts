@@ -46,7 +46,17 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   });
 
   const transport = API_URL.protocol === 'https:' ? https : http;
-  const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
+
+  // A body exists only if the request says so. Assuming every non-GET has one
+  // means a bodyless DELETE gets piped a stream that never ends, and the
+  // request hangs forever instead of completing - which looked exactly like a
+  // dead Delete button.
+  //
+  // Read these off the request rather than the copied header map: both are
+  // hop-by-hop and have already been stripped from it.
+  const declaresBody =
+    request.headers.get('content-length') !== null || request.headers.get('transfer-encoding') !== null;
+  const hasBody = request.method !== 'GET' && request.method !== 'HEAD' && declaresBody;
 
   return new Promise<Response>((resolve) => {
     const upstream = transport.request(
@@ -65,9 +75,16 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
           responseHeaders.set(key, Array.isArray(value) ? value.join(', ') : value);
         }
 
+        // 204/205/304 carry no body by definition. Handing one a stream leaves
+        // the response open forever - the request completes upstream, the work
+        // is done, and the caller just waits. Drain the socket and send null.
+        const status = response.statusCode ?? 502;
+        const bodyless = status === 204 || status === 205 || status === 304;
+        if (bodyless) response.resume();
+
         resolve(
-          new Response(Readable.toWeb(response) as ReadableStream, {
-            status: response.statusCode ?? 502,
+          new Response(bodyless ? null : (Readable.toWeb(response) as ReadableStream), {
+            status,
             headers: responseHeaders,
           }),
         );
