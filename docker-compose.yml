@@ -60,8 +60,9 @@ services:
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-convertara}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-convertara-secret}
       S3_FORCE_PATH_STYLE: 'true'
-      # Required before any provider API key can be stored.
-      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env - generate with: openssl rand -hex 32}
+      # Required before any provider API key can be stored. Quoted because the
+      # message contains a colon, which YAML would otherwise read as a mapping.
+      SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY in .env - generate one with `openssl rand -hex 32`}"
       AI_MODE: ${AI_MODE:-auto}
       # See docs/adr/0001 for why these two default to off.
       TRUST_OWNER_HEADER: ${TRUST_OWNER_HEADER:-false}
