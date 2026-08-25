@@ -94,7 +94,16 @@ export type Config = z.infer<typeof schema>;
 let cached: Config | undefined;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = schema.safeParse(env);
+  // A blank environment variable means "unset", not "set to empty". Compose
+  // writes `${LLM_PROVIDER:-}` as an empty string, and to zod that is a present
+  // value that fails an enum rather than an absent one that takes the default -
+  // which crash-loops the container over a variable the operator left blank on
+  // purpose. Dropping blanks here makes the schema read the way the .env does.
+  const present = Object.fromEntries(
+    Object.entries(env).filter(([, value]) => value !== undefined && value.trim() !== ''),
+  );
+
+  const parsed = schema.safeParse(present);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n  ');
     throw new Error(`Invalid environment configuration:\n  ${issues}`);

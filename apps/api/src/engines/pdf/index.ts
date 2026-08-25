@@ -2,7 +2,7 @@ import { PDFDocument, degrees } from 'pdf-lib';
 import { z } from 'zod';
 import { AppError } from '../../core/errors.js';
 import type { Capability, EnginePlugin, OpInput, SizeOptimizer, WorkFile } from '../../router/types.js';
-import { compressPdf, ghostscriptAvailable } from './ghostscript.js';
+import { OPTIMIZER_PRESET, compressPdf, ghostscriptAvailable } from './ghostscript.js';
 import { parsePageRange } from './pages.js';
 
 const PDF_MIME = 'application/pdf';
@@ -252,14 +252,21 @@ const compress: Capability = {
 };
 
 /**
- * Only registered when Ghostscript is present. `scale` is unused for PDFs -
- * page geometry stays fixed and image resolution carries the whole range.
+ * `scale` is unused for PDFs - page geometry stays fixed and image resolution
+ * carries the whole range.
+ *
+ * The quality ceiling is 80, not 100: above roughly that the requested
+ * resolution exceeds what the embedded images actually contain, nothing gets
+ * downsampled, and every setting returns the same source-sized file. Searching
+ * that flat region wastes encodes. The preset is pinned for the same reason the
+ * threshold is set - to keep the curve continuous enough to binary search.
  */
 const optimizer: SizeOptimizer = {
   domain: 'pdf',
   supports: (file) => file.mime === PDF_MIME,
-  knobs: (_file, rc) => ({ quality: { min: Math.max(5, rc.minQuality - 20), max: 92 }, scale: { min: 1, max: 1 } }),
-  render: async (file, { quality }, ctx) => wrap(file.name, await compressPdf(file.data, quality, ctx.signal)),
+  knobs: (_file, rc) => ({ quality: { min: Math.max(5, rc.minQuality - 20), max: 80 }, scale: { min: 1, max: 1 } }),
+  render: async (file, { quality }, ctx) =>
+    wrap(file.name, await compressPdf(file.data, quality, ctx.signal, OPTIMIZER_PRESET)),
 };
 
 export const pdfEngine: EnginePlugin = {
