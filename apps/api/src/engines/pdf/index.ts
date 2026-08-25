@@ -40,6 +40,7 @@ const merge: Capability = {
   produces: PDF_MIME,
   cost: 2,
   available: always,
+  paramsHint: 'filename: optional output name. Needs two or more input PDFs',
   paramsSchema: z.object({ filename: z.string().max(120).optional() }),
   run: async (input: OpInput<{ filename?: string }>) => {
     if (input.files.length < 2) throw new AppError('BAD_REQUEST', 'Merging needs at least two PDFs');
@@ -64,6 +65,7 @@ const split: Capability = {
   produces: PDF_MIME,
   cost: 2,
   available: always,
+  paramsHint: 'every: pages per output file (default 1)',
   paramsSchema: z.object({ every: z.number().int().positive().max(1000).default(1) }),
   run: async (input: OpInput<{ every: number }>) => {
     const out: WorkFile[] = [];
@@ -99,6 +101,7 @@ const extractPages: Capability = {
   produces: PDF_MIME,
   cost: 2,
   available: always,
+  paramsHint: 'pages: selection string such as \"1-3,7,10-\" (required)',
   paramsSchema: z.object({ pages: z.string().min(1).max(200) }),
   run: async (input: OpInput<{ pages: string }>) => {
     const out: WorkFile[] = [];
@@ -123,6 +126,7 @@ const rotate: Capability = {
   produces: PDF_MIME,
   cost: 2,
   available: always,
+  paramsHint: 'angle: multiple of 90 (required), pages: selection string (default all)',
   paramsSchema: z.object({
     angle: z.number().int().refine((a) => a % 90 === 0, 'angle must be a multiple of 90'),
     pages: z.string().max(200).default('all'),
@@ -151,6 +155,7 @@ const setMetadata: Capability = {
   produces: PDF_MIME,
   cost: 1,
   available: always,
+  paramsHint: 'title, author, subject, keywords: string[], clear: boolean to wipe all metadata',
   paramsSchema: z.object({
     title: z.string().max(300).optional(),
     author: z.string().max(300).optional(),
@@ -190,6 +195,7 @@ const fromImages: Capability = {
   produces: PDF_MIME,
   cost: 3,
   available: always,
+  paramsHint: 'pageSize: fit|a4|letter, margin: points, filename: output name',
   paramsSchema: z.object({
     pageSize: z.enum(['fit', 'a4', 'letter']).default('fit'),
     margin: z.number().min(0).max(200).default(0),
@@ -231,6 +237,7 @@ const compress: Capability = {
   produces: PDF_MIME,
   cost: 8,
   available: ghostscriptAvailable,
+  paramsHint: 'quality: 1-100 (default 60). Lower means more aggressive image downsampling',
   paramsSchema: z.object({ quality: z.number().int().min(1).max(100).default(60) }),
   run: async (input: OpInput<{ quality: number }>) => {
     const out: WorkFile[] = [];

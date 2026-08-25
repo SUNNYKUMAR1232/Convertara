@@ -56,6 +56,7 @@ const convert: Capability = {
   produces: 'same',
   cost: 3,
   available: always,
+  paramsHint: 'format: jpeg|png|webp|avif|tiff|gif (required), quality: 1-100',
   paramsSchema: z.object({
     format: formatEnum,
     quality: z.number().int().min(1).max(100).optional(),
@@ -81,6 +82,7 @@ const resize: Capability = {
   produces: 'same',
   cost: 3,
   available: always,
+  paramsHint: 'width and/or height in px, fit: inside|cover|contain|fill|outside, withoutEnlargement: boolean',
   paramsSchema: z
     .object({
       width: z.number().int().positive().max(30000).optional(),
@@ -116,6 +118,7 @@ const compress: Capability = {
   produces: 'same',
   cost: 4,
   available: always,
+  paramsHint: 'quality: 1-100 (default 80), format: optional target format',
   paramsSchema: z.object({
     quality: z.number().int().min(1).max(100).default(80),
     format: formatEnum.optional(),
@@ -141,6 +144,7 @@ const crop: Capability = {
   produces: 'same',
   cost: 3,
   available: always,
+  paramsHint: 'either {left, top, width, height} in px, or {gravity: centre|north|south|east|west|attention, width, height}',
   paramsSchema: z.union([
     z.object({
       left: z.number().int().min(0),
@@ -190,6 +194,7 @@ const rotate: Capability = {
   produces: 'same',
   cost: 2,
   available: always,
+  paramsHint: 'angle: degrees (omit to auto-orient from EXIF), flip: boolean, flop: boolean',
   paramsSchema: z.object({
     angle: z.number().optional(),
     flip: z.boolean().default(false),
@@ -220,6 +225,7 @@ const grayscale: Capability = {
   produces: 'same',
   cost: 2,
   available: always,
+  paramsHint: 'no parameters',
   paramsSchema: z.object({}),
   run: (input: OpInput<Record<string, never>>) =>
     mapFiles(input, async (file) => {
@@ -242,6 +248,7 @@ const stripMetadata: Capability = {
   produces: 'same',
   cost: 2,
   available: always,
+  paramsHint: 'no parameters',
   paramsSchema: z.object({}),
   run: (input: OpInput<Record<string, never>>) =>
     mapFiles(input, async (file) => {

@@ -36,6 +36,8 @@ export interface Capability<P = any> {
   /** MIME produced, or `same` when the capability preserves the input type. */
   produces: string;
   paramsSchema: z.ZodType<P>;
+  /** One-line parameter summary shown to the planner model. */
+  paramsHint: string;
   /** Relative CPU weight per MB, used by the sync/async cost estimator. */
   cost: number;
   /** True when the capability can run right now (e.g. optional binary present). */

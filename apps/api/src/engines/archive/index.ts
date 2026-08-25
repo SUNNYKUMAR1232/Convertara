@@ -60,6 +60,7 @@ const create: Capability = {
   produces: ZIP_MIME,
   cost: 3,
   available: always,
+  paramsHint: 'level: 0-9 deflate level (default 6), filename: output name',
   paramsSchema: z.object({
     level: z.number().int().min(0).max(9).default(6),
     filename: z.string().max(120).default('archive.zip'),
@@ -81,6 +82,7 @@ const extract: Capability = {
   produces: 'same',
   cost: 4,
   available: always,
+  paramsHint: 'prefix: optional path prefix filter',
   paramsSchema: z.object({
     /** Only extract entries matching this glob-ish prefix, e.g. `images/`. */
     prefix: z.string().max(200).optional(),
@@ -133,6 +135,7 @@ const inspect: Capability = {
   produces: 'same',
   cost: 1,
   available: always,
+  paramsHint: 'no parameters',
   paramsSchema: z.object({}),
   run: async (input: OpInput<Record<string, never>>) => {
     return input.files.map((file) => {
