@@ -24,16 +24,29 @@ const API_HOST = '127.0.0.1';
  * a crash loop out of a shutdown that was only slightly untidy. A busy port
  * just means we take another one.
  *
+ * The public port is excluded rather than probed. Render hands out PORT=4000,
+ * which is also the natural default here, and probing cannot see the clash:
+ * the web child has not bound its port yet, so 4000 looks free, both children
+ * are sent to it, and the API loses the race. A port we are about to give away
+ * is never a candidate.
+ *
  * API_PORT is still honoured when set, and left to fail loudly if it is busy -
  * someone who names a port wants that port.
  */
 async function pickApiPort() {
-  if (process.env.API_PORT) return process.env.API_PORT;
-  for (const candidate of [4000, 0]) {
-    const port = await tryBind(candidate);
-    if (port !== null) return String(port);
+  if (process.env.API_PORT) {
+    if (process.env.API_PORT === PUBLIC_PORT) {
+      throw new Error(`API_PORT (${process.env.API_PORT}) is the port the web app serves on; pick another.`);
+    }
+    return process.env.API_PORT;
   }
-  return '4000';
+  // 0 lets the OS choose, so it can never collide with the public port.
+  const candidates = [4000, 0].filter((port) => port === 0 || String(port) !== PUBLIC_PORT);
+  for (const candidate of candidates) {
+    const port = await tryBind(candidate);
+    if (port !== null && String(port) !== PUBLIC_PORT) return String(port);
+  }
+  throw new Error('could not find a free loopback port for the API');
 }
 
 function tryBind(port) {
