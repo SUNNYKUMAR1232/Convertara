@@ -8,13 +8,46 @@
  *
  * Binding the API to 127.0.0.1 rather than 0.0.0.0 is deliberate. It keeps the
  * API off the public interface, and it stops a host that discovers its port by
- * scanning from picking 4000 as the service port instead of the web app's.
+ * scanning from picking the API as the service port instead of the web app's.
  */
 import { spawn } from 'node:child_process';
+import net from 'node:net';
 
 const PUBLIC_PORT = process.env.PORT ?? '3000';
-const API_PORT = process.env.API_PORT ?? '4000';
 const API_HOST = '127.0.0.1';
+
+/**
+ * The API's port is an implementation detail - nothing outside this process
+ * needs to predict it - so never fail over it. A SIGKILLed supervisor (any
+ * host force-kills after its grace period) orphans the API, which keeps its
+ * port, and a fixed port would then make every restart die on EADDRINUSE:
+ * a crash loop out of a shutdown that was only slightly untidy. A busy port
+ * just means we take another one.
+ *
+ * API_PORT is still honoured when set, and left to fail loudly if it is busy -
+ * someone who names a port wants that port.
+ */
+async function pickApiPort() {
+  if (process.env.API_PORT) return process.env.API_PORT;
+  for (const candidate of [4000, 0]) {
+    const port = await tryBind(candidate);
+    if (port !== null) return String(port);
+  }
+  return '4000';
+}
+
+function tryBind(port) {
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once('error', () => resolve(null));
+    probe.listen(port, API_HOST, () => {
+      const { port: bound } = probe.address();
+      probe.close(() => resolve(bound));
+    });
+  });
+}
+
+const API_PORT = await pickApiPort();
 
 const children = new Map();
 let stopping = false;
