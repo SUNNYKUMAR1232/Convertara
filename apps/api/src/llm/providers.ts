@@ -45,6 +45,15 @@ export const PROVIDERS: ProviderInfo[] = [
     help: 'Uses responseSchema for structured output.',
   },
   {
+    provider: 'groq',
+    label: 'Groq',
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.groq.com/openai/v1',
+    baseUrlEditable: true,
+    suggestedModels: ['llama-3.3-70b-versatile', 'moonshotai/kimi-k2-instruct-0905', 'llama-3.1-8b-instant'],
+    help: 'Keys start with gsk_. Very fast. Asks for plain JSON rather than a server-enforced schema, so any chat model works.',
+  },
+  {
     provider: 'ollama',
     label: 'Ollama (local)',
     requiresApiKey: false,

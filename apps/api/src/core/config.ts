@@ -82,7 +82,7 @@ const schema = z.object({
   /** `auto` = fast path when possible, LLM otherwise. */
   AI_MODE: z.enum(['auto', 'always', 'never']).default('auto'),
   /** Optional server-wide default provider (a user config overrides it). */
-  LLM_PROVIDER: z.enum(['openai', 'anthropic', 'gemini', 'ollama', 'custom']).optional(),
+  LLM_PROVIDER: z.enum(['openai', 'anthropic', 'gemini', 'groq', 'ollama', 'custom']).optional(),
   LLM_MODEL: z.string().optional(),
   LLM_API_KEY: z.string().optional(),
   LLM_BASE_URL: z.string().optional(),

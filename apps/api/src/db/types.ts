@@ -45,7 +45,7 @@ export interface JobRecord {
   updatedAt: Date;
 }
 
-export type LlmProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'custom';
+export type LlmProvider = 'openai' | 'anthropic' | 'gemini' | 'groq' | 'ollama' | 'custom';
 
 export interface LlmConfigRecord {
   id: string;

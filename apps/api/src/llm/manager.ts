@@ -6,7 +6,7 @@ import type { LlmConfigRecord, LlmProvider } from '../db/types.js';
 import { anthropicAdapter } from './adapters/anthropic.js';
 import { geminiAdapter } from './adapters/gemini.js';
 import { ollamaAdapter } from './adapters/ollama.js';
-import { customAdapter, openaiAdapter } from './adapters/openai.js';
+import { customAdapter, groqAdapter, openaiAdapter } from './adapters/openai.js';
 import { assertSafeEndpoint } from '../security/endpoint-guard.js';
 import { decryptSecret } from './crypto.js';
 import { LlmError } from './types.js';
@@ -16,6 +16,7 @@ const ADAPTERS: Record<LlmProvider, LlmAdapter> = {
   openai: openaiAdapter,
   anthropic: anthropicAdapter,
   gemini: geminiAdapter,
+  groq: groqAdapter,
   ollama: ollamaAdapter,
   custom: customAdapter,
 };

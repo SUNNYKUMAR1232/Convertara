@@ -11,7 +11,7 @@ import { PROVIDERS, providerInfo } from '../../llm/providers.js';
 import type { LlmSettings } from '../../llm/types.js';
 import { ownerOf } from '../context.js';
 
-const providerEnum = z.enum(['openai', 'anthropic', 'gemini', 'ollama', 'custom']);
+const providerEnum = z.enum(['openai', 'anthropic', 'gemini', 'groq', 'ollama', 'custom']);
 
 const upsertBody = z.object({
   id: z.string().uuid().optional(),
