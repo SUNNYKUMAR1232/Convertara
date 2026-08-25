@@ -1,7 +1,7 @@
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 import { config } from '../core/config.js';
 import { AppError } from '../core/errors.js';
@@ -15,7 +15,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   const cfg = config();
 
   const app = Fastify({
-    loggerInstance: logger,
+    loggerInstance: logger as FastifyBaseLogger,
     bodyLimit: 2 * 1024 * 1024,
     trustProxy: true,
     disableRequestLogging: cfg.NODE_ENV === 'production',
@@ -34,11 +34,6 @@ export async function buildServer(): Promise<FastifyInstance> {
       fields: 10,
     },
   });
-
-  await app.register(systemRoutes);
-  await app.register(fileRoutes);
-  await app.register(processRoutes);
-  await app.register(llmRoutes);
 
   /** One error shape for every failure, so clients never have to guess. */
   app.setErrorHandler((error, request, reply) => {
@@ -68,7 +63,8 @@ export async function buildServer(): Promise<FastifyInstance> {
     return reply.code(status).send({
       error: {
         code: status >= 500 ? 'INTERNAL' : 'BAD_REQUEST',
-        message: status >= 500 && cfg.NODE_ENV === 'production' ? 'Something went wrong' : error.message,
+        message:
+          status >= 500 && cfg.NODE_ENV === 'production' ? 'Something went wrong' : (error as Error).message,
       },
     });
   });
@@ -76,6 +72,11 @@ export async function buildServer(): Promise<FastifyInstance> {
   app.setNotFoundHandler((request, reply) =>
     reply.code(404).send({ error: { code: 'NOT_FOUND', message: `No route for ${request.method} ${request.url}` } }),
   );
+
+  await app.register(systemRoutes);
+  await app.register(fileRoutes);
+  await app.register(processRoutes);
+  await app.register(llmRoutes);
 
   return app;
 }

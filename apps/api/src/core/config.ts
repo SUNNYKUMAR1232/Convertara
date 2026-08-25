@@ -54,6 +54,12 @@ const schema = z.object({
   ARCHIVE_MAX_TOTAL_BYTES: int(1024 * 1024 * 1024),
   ARCHIVE_MAX_RATIO: int(120),
 
+  /**
+   * How many jobs one worker process handles at once. libvips keeps its own
+   * thread pool underneath, so this is about concurrent jobs, not cores.
+   */
+  WORKER_CONCURRENCY: int(4),
+
   /** `auto` = fast path when possible, LLM otherwise. */
   AI_MODE: z.enum(['auto', 'always', 'never']).default('auto'),
   /** Optional server-wide default provider (a user config overrides it). */

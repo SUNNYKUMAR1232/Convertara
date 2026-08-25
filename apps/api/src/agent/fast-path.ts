@@ -34,6 +34,9 @@ const FILLER = new Set([
   'size', 'quality', 'aspect', 'ratio', 'each', 'all', 'them', 'one', 'single', 'same',
   'exactly', 'about', 'around', 'approximately', 'under', 'below', 'over', 'max', 'maximum',
   'least', 'most', 'per', 'from', 'out', 'up', 'down', 'on', 'off', 'new', 'copy',
+  // Format nouns: naming the thing you are holding is not an instruction.
+  'pdf', 'pdfs', 'jpg', 'jpgs', 'jpeg', 'jpegs', 'png', 'pngs', 'webp', 'avif', 'tiff',
+  'tif', 'gif', 'gifs', 'zip', 'zips', 'archives', 'pic', 'pics', 'img', 'imgs', 'scan', 'scans',
 ]);
 
 /** Words that signal judgement rather than instruction - hand those to the model. */
@@ -90,6 +93,9 @@ export function planFromRules(prompt: string, files: WorkFile[]): FastPathResult
     }
   }
 
+  // The verb and its numbers are consumed separately, so "resize to 1200x800"
+  // leaves nothing behind for the coverage check to trip over.
+  take(/\b(?:resiz(?:e|ing|ed)|scale[ds]?|resample|dimensions?)\b/);
   const dims = take(/\b(\d{2,5})\s*(?:x|by|×)\s*(\d{2,5})\b/);
   const widthOnly = dims ? undefined : take(/\b(?:width|wide)\s*(?:of|to|=|:)?\s*(\d{2,5})\s*(?:px|pixels)?\b/);
   const maxDim = dims || widthOnly ? undefined : take(/\b(?:max(?:imum)?|no more than|at most)\s*(\d{2,5})\s*(?:px|pixels)\b/);

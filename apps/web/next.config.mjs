@@ -1,16 +1,18 @@
-/** @type {import('next').NextConfig} */
-const apiUrl = process.env.API_URL ?? 'http://localhost:4000';
+import { fileURLToPath } from 'node:url';
 
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Emits a self-contained server with only the modules the app imports.
   output: 'standalone',
-  // Everything under /api is proxied to the Fastify service, so the browser
-  // only ever talks to one origin - no CORS, no separate URL to configure.
-  async rewrites() {
-    return [
-      { source: '/api/:path*', destination: `${apiUrl}/:path*` },
-    ];
-  },
+  // The workspace root, so tracing follows the hoisted node_modules. Must go
+  // through fileURLToPath: `new URL().pathname` yields "/D:/..." on Windows and
+  // tracing then silently emits nothing.
+  outputFileTracingRoot: fileURLToPath(new URL('../../', import.meta.url)),
 };
 
 export default nextConfig;
+
+// Requests to /api/* are forwarded by app/api/[...path]/route.ts rather than by
+// a rewrite, because rewrites are baked into the build and API_URL has to stay
+// a runtime setting - the same image ships to every environment.

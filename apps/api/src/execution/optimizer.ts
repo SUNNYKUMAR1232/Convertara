@@ -15,7 +15,7 @@ export interface SizeSolution {
 
 const QUALITY_STEPS = 6;
 const SCALE_STEPS = 5;
-const REFINE_STEPS = 3;
+const REFINE_STEPS = 4;
 
 /**
  * Hits a byte target without asking the model anything.
@@ -78,9 +78,18 @@ export async function solveSizeTarget(
       }
     }
 
-    // Phase 3 - claw quality back at the scale we settled on.
+    // Phase 3 - claw quality back at the scale we settled on. Phase 2 already
+    // proved holdQuality overshoots there, so the search starts below it
+    // instead of rediscovering that from the top of the range.
     if (!landed) {
-      landed = await searchQuality(render, consider, knobs.quality, low, window, REFINE_STEPS);
+      landed = await searchQuality(
+        render,
+        consider,
+        { min: knobs.quality.min, max: holdQuality },
+        low,
+        window,
+        REFINE_STEPS,
+      );
     }
   }
 
