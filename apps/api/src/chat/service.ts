@@ -9,7 +9,10 @@ import { runJob, submit } from '../execution/pipeline.js';
 import { converse } from '../llm/converse.js';
 import { llm } from '../llm/manager.js';
 import { jobQueue } from '../queue/index.js';
-import { capabilitiesReply, classifyTurn, greetingReply, thanksReply } from './intent.js';
+import { buildAdjustment } from './adjust.js';
+import type { Adjustment } from './adjust.js';
+import { humaniseError } from './errors.js';
+import { capabilitiesReply, classifyTurn, greetingReply, thanksReply, unclearReply } from './intent.js';
 import { NO_FILE_REPLY, describeResult } from './reply.js';
 
 export interface TurnRequest {
@@ -92,7 +95,9 @@ export async function* handleTurn(request: TurnRequest): AsyncGenerator<TurnEven
           ? thanksReply(carried.length > 0)
           : kind === 'capabilities'
             ? await capabilitiesReply()
-            : undefined;
+            : kind === 'unclear'
+              ? unclearReply(carried[0]?.filename)
+              : undefined;
 
     if (canned !== undefined) {
       yield { type: 'delta', text: canned };
@@ -102,9 +107,55 @@ export async function* handleTurn(request: TurnRequest): AsyncGenerator<TurnEven
 
     yield* answerQuestion(request, conversation, history, carried);
   } catch (error) {
-    const message =
-      error instanceof AppError ? error.message : `Something went wrong: ${(error as Error).message}`;
+    // The raw message goes to the log; the user gets a sentence they can act on.
+    const message = humaniseError(error);
     logger.error({ err: error, conversationId: conversation.id }, 'chat turn failed');
+    yield { type: 'delta', text: message };
+    yield { type: 'done', message: await save(repo, conversation, message, [], null) };
+  }
+}
+
+export interface AdjustRequest {
+  ownerId: string;
+  conversationId: string;
+  fileId: string;
+  adjustment: Adjustment;
+}
+
+/**
+ * An adjustment from the editor. It lands in the thread as an ordinary turn -
+ * a user message saying what was asked for and an assistant message with the
+ * result - so dragging a crop box and typing an instruction produce the same
+ * kind of history.
+ */
+export async function* handleAdjust(request: AdjustRequest): AsyncGenerator<TurnEvent, void, undefined> {
+  const repo = repository();
+  const conversation = await repo.getConversation(request.conversationId);
+  if (!conversation || conversation.ownerId !== request.ownerId) throw notFound('Conversation not found');
+
+  const files = await loadFiles([request.fileId], request.ownerId);
+  const source = files[0];
+  if (!source) throw notFound('That file is no longer available');
+
+  const { plan, label } = buildAdjustment(request.adjustment);
+
+  const userMessage = await repo.addMessage({
+    id: newId(),
+    conversationId: conversation.id,
+    role: 'user',
+    text: label,
+    attachmentIds: [],
+    jobId: null,
+    createdAt: new Date(),
+  });
+  yield { type: 'conversation', id: conversation.id, title: conversation.title };
+  yield { type: 'message', message: serialise(userMessage, []) };
+
+  try {
+    yield* runOperation({ ownerId: request.ownerId, text: label }, conversation, [source], plan);
+  } catch (error) {
+    const message = humaniseError(error);
+    logger.error({ err: error, conversationId: conversation.id }, 'adjustment failed');
     yield { type: 'delta', text: message };
     yield { type: 'done', message: await save(repo, conversation, message, [], null) };
   }
@@ -114,21 +165,25 @@ async function* runOperation(
   request: TurnRequest,
   conversation: ConversationRecord,
   files: FileRecord[],
+  explicitPlan?: unknown,
 ): AsyncGenerator<TurnEvent, void, undefined> {
   const repo = repository();
-  yield { type: 'status', text: 'Working out what you want' };
+  yield { type: 'status', text: explicitPlan ? 'Applying' : 'Working out what you want' };
 
   const { job, lane } = await submit({
     ownerId: request.ownerId,
     fileIds: files.map((f) => f.id),
     prompt: request.text,
+    ...(explicitPlan ? { plan: explicitPlan } : {}),
     mode: 'auto',
   });
 
-  yield {
-    type: 'status',
-    text: job.planSource === 'fast-path' ? 'Understood without asking a model' : 'Planned',
-  };
+  if (!explicitPlan) {
+    yield {
+      type: 'status',
+      text: job.planSource === 'fast-path' ? 'Understood without asking a model' : 'Planned',
+    };
+  }
 
   // Progress arrives on the same bus the SSE job stream uses, so a queued turn
   // reports exactly what a queued job would.

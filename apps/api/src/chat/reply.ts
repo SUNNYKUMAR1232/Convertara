@@ -1,4 +1,7 @@
+import { AppError } from '../core/errors.js';
+import type { ErrorCode } from '../core/errors.js';
 import { describeWindow, resolveConstraints } from '../constraints/engine.js';
+import { humaniseError } from './errors.js';
 import type { JobRecord } from '../db/types.js';
 import { formatBytes } from '../core/units.js';
 
@@ -20,7 +23,8 @@ export interface ReplyFile {
  */
 export function describeResult(job: JobRecord, inputs: ReplyFile[], outputs: ReplyFile[]): string {
   if (job.status === 'failed') {
-    return job.error?.message ?? 'That did not work, and I could not produce a file.';
+    if (!job.error) return 'That did not work, and I could not produce a file.';
+    return humaniseError(new AppError(job.error.code as ErrorCode, job.error.message));
   }
   if (outputs.length === 0) return 'That finished, but produced nothing to download.';
 
@@ -58,22 +62,36 @@ function what(job: JobRecord, inputs: ReplyFile[], outputs: ReplyFile[]): string
   const outputBytes = outputs.reduce((n, f) => n + f.bytes, 0);
 
   // Several files in, one archive out.
-  if (outputs.length === 1 && first.mime === 'application/zip' && inputs.length > 1) {
-    return `Zipped ${inputs.length} files into ${first.filename} (${formatBytes(first.bytes)}).`;
+  if (outputs.length === 1 && first.mime === 'application/zip' && inputs.length > 1 && ops.includes('archive.create')) {
+    return `Zipped ${plural(inputs.length, 'file')} into ${first.filename} (${formatBytes(first.bytes)}).`;
   }
   if (ops.includes('archive.extract')) {
-    return `Unpacked ${outputs.length} file${outputs.length === 1 ? '' : 's'} from the archive.`;
+    return `Unpacked ${plural(outputs.length, 'file')} from the archive.`;
   }
   if (ops.includes('pdf.merge')) {
     const pages = typeof first.meta.pages === 'number' ? `, ${first.meta.pages} pages` : '';
     return `Merged ${inputs.length} PDFs into ${first.filename} (${formatBytes(first.bytes)}${pages}).`;
   }
   if (ops.includes('pdf.split')) {
-    return `Split that into ${outputs.length} files.`;
+    // Several outputs get bundled into one zip before they reach here, so the
+    // count the user cares about is inside the archive, not the length of this
+    // array - which would always report "1 file".
+    const pieces = bundledCount(outputs) ?? outputs.length;
+    const zipped = pieces !== outputs.length ? ', zipped for download' : '';
+    return `Split that into ${plural(pieces, 'file')}${zipped}.`;
   }
   if (ops.includes('pdf.extract-pages')) {
     const pages = typeof first.meta.pages === 'number' ? `${first.meta.pages} pages` : 'the pages you asked for';
     return `Pulled out ${pages} (${formatBytes(first.bytes)}).`;
+  }
+
+  if (ops.includes('image.crop')) {
+    const size = typeof first.meta.width === 'number' ? ` to ${first.meta.width}x${first.meta.height}` : '';
+    return `Cropped${size} - ${formatBytes(outputBytes)}.`;
+  }
+  if (ops.includes('image.rotate') || ops.includes('pdf.rotate')) {
+    const size = typeof first.meta.width === 'number' ? `, now ${first.meta.width}x${first.meta.height}` : '';
+    return `Rotated${size} - ${formatBytes(outputBytes)}.`;
   }
 
   const shrank = inputBytes > 0 && outputBytes < inputBytes * 0.95;
@@ -98,8 +116,18 @@ function what(job: JobRecord, inputs: ReplyFile[], outputs: ReplyFile[]): string
       ? `${formatBytes(inputBytes)} to ${formatBytes(outputBytes)}`
       : formatBytes(outputBytes);
 
-  const many = outputs.length > 1 ? ` across ${outputs.length} files` : '';
+  const spread = bundledCount(outputs) ?? outputs.length;
+  const many = spread > 1 ? ` across ${plural(spread, 'file')}` : '';
   return `${bits.join(' ')}${many} - ${size}.`;
+}
+
+const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? '' : 's'}`;
+
+/** How many files went into the archive, when the pipeline bundled the results. */
+function bundledCount(outputs: ReplyFile[]): number | undefined {
+  const only = outputs.length === 1 ? outputs[0] : undefined;
+  if (!only || only.mime !== 'application/zip') return undefined;
+  return typeof only.meta.entries === 'number' ? only.meta.entries : undefined;
 }
 
 function label(mime: string): string {

@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ImageEditor } from '@/components/ImageEditor';
+import type { Adjustment } from '@/components/ImageEditor';
 import { Message } from '@/components/Message';
-import { chatApi, formatBytes, sendTurn, uploadFiles } from '@/lib/chat';
-import type { Attachment, ChatMessage, Conversation } from '@/lib/chat';
+import { chatApi, formatBytes, sendAdjustment, sendTurn, uploadFiles } from '@/lib/chat';
+import type { Attachment, ChatMessage, Conversation, TurnEvent } from '@/lib/chat';
 
 const SUGGESTIONS = [
   'Compress this to 300 KB ±5%',
@@ -24,6 +26,7 @@ export default function Chat() {
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [sidebar, setSidebar] = useState(false);
+  const [editing, setEditing] = useState<Attachment | null>(null);
 
   const fileInput = useRef<HTMLInputElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -94,12 +97,21 @@ export default function Chat() {
     const patch = (fn: (m: ChatMessage) => ChatMessage) =>
       setMessages((current) => current.map((m) => (m.id === placeholderId ? fn(m) : m)));
 
+    await consume(
+      sendTurn({ conversationId, text, fileIds: attachments.map((f) => f.id) }),
+      placeholderId,
+      patch,
+    );
+  }
+
+  /** Shared by the composer and the editor - both produce the same event stream. */
+  async function consume(
+    stream: AsyncGenerator<TurnEvent>,
+    placeholderId: string,
+    patch: (fn: (m: ChatMessage) => ChatMessage) => void,
+  ) {
     try {
-      for await (const event of sendTurn({
-        conversationId,
-        text,
-        fileIds: attachments.map((f) => f.id),
-      })) {
+      for await (const event of stream) {
         switch (event.type) {
           case 'conversation':
             setConversationId(event.id);
@@ -136,6 +148,36 @@ export default function Chat() {
       patch((m) => ({ ...m, streaming: false }));
       void chatApi.conversations().then(setConversations);
     }
+  }
+
+  async function applyAdjustment(adjustment: Adjustment) {
+    if (!editing || !conversationId || busy) return;
+    setBusy(true);
+
+    const placeholderId = `pending-${Date.now()}`;
+    setMessages((current) => [
+      ...current,
+      {
+        id: placeholderId,
+        role: 'assistant',
+        text: '',
+        createdAt: new Date().toISOString(),
+        jobId: null,
+        attachments: [],
+        streaming: true,
+        status: 'Applying',
+      },
+    ]);
+
+    const patch = (fn: (m: ChatMessage) => ChatMessage) =>
+      setMessages((current) => current.map((m) => (m.id === placeholderId ? fn(m) : m)));
+
+    await consume(
+      sendAdjustment({ conversationId, fileId: editing.id, adjustment }),
+      placeholderId,
+      patch,
+    );
+    setEditing(null);
   }
 
   const empty = messages.length === 0;
@@ -223,7 +265,9 @@ export default function Chat() {
               </div>
             </div>
           ) : (
-            messages.map((message) => <Message key={message.id} message={message} />)
+            messages.map((message) => (
+              <Message key={message.id} message={message} onEdit={setEditing} />
+            ))
           )}
           <div ref={bottom} />
         </div>
@@ -301,6 +345,17 @@ export default function Chat() {
           event.target.value = '';
         }}
       />
+
+      {editing && (
+        <div className="editor-veil" onPointerDown={(event) => event.target === event.currentTarget && setEditing(null)}>
+          <ImageEditor
+            file={editing}
+            busy={busy}
+            onApply={(adjustment) => void applyAdjustment(adjustment)}
+            onClose={() => setEditing(null)}
+          />
+        </div>
+      )}
 
       {dragging && <div className="dropveil">Drop to attach</div>}
     </div>

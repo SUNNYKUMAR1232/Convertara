@@ -1,6 +1,6 @@
 # Convertara
 
-Describe what you want done to a file. The system guarantees the result.
+Chat with it about a file. The system guarantees the result.
 
 "Compress this to 300 KB ± 5%" is not a prompt for a language model — it is an
 optimisation problem with a checkable answer. Convertara splits those jobs in
@@ -78,8 +78,10 @@ in-process queue. In another terminal:
 npm run dev:web
 ```
 
-Open <http://localhost:3000>. Drop in an image, type "compress to 300kb ±5%",
-and watch it land inside the window without a model being called.
+Open <http://localhost:3000>. Drop in an image, say "compress to 300kb ±5%",
+and watch it land inside the window without a model being called. Then say
+"now convert it to png" with nothing attached - the follow-up picks up the file
+the last turn produced.
 
 ### Production, with Docker
 
@@ -102,6 +104,46 @@ docker compose up -d --scale worker=4
 ```
 
 ---
+
+## It is a conversation, not a form
+
+A turn is classified before anything else happens, and most turns never reach a
+model at all:
+
+| You type | What happens |
+|---|---|
+| "hi", "thanks" | Answered directly. No model. |
+| "what can you do" | Generated from the live capability registry, so it cannot go stale. No model. |
+| "compress to 300kb ±5%" (file attached) | Rule engine plans it, engine runs it, validator checks it. No model. |
+| "now convert it to png" (nothing attached) | Same, against whatever the last turn produced. No model. |
+| "which is smaller, webp or avif?" | Goes to your configured model, streamed token by token. |
+| "do" / "ok" | Says it does not know what you meant and gives examples. A file being attached does not make a message an instruction. |
+
+## Crop, resize and rotate are dragged, not described
+
+"Crop a bit off the left" is a bad sentence and a good drag. Any image the
+assistant produces carries an **Adjust** button that opens a direct-manipulation
+editor:
+
+- **Crop** - drag a box on the image, or drag the box to move it. The readout
+  is in real pixels, and what you apply is exactly what you drew.
+- **Resize** - width and height with an aspect lock and 25/50/75% presets. An
+  explicit number here is allowed to enlarge, unlike a typed instruction.
+- **Rotate** - 90° either way, flips, or any angle.
+
+Applying lands in the thread as an ordinary turn - a user message saying what
+was asked for, an assistant message with the result - so you can keep talking
+to it afterwards, and each adjustment runs against the file shown rather than a
+re-compressed copy.
+
+A measured six-turn session - compress, resize, shrink under a ceiling, convert,
+thanks - made **zero model calls**.
+
+Replies about work done are templated rather than generated. Every fact is
+already in hand, and a template that knows them writes a better sentence than a
+model guessing at them, for no latency and no cost:
+
+> Compressed that - 2.6 MB to 312 KB. That is inside your 285 KB-315 KB (target 300 KB).
 
 ## Choosing a model
 
@@ -166,6 +208,9 @@ curl -F 'files=@photo.jpg' -F 'prompt=compress to 300kb ±5%' \
 
 | Route | Purpose |
 |---|---|
+| `POST /v1/chat` | One conversational turn, streamed as SSE |
+| `GET /v1/conversations` | Conversation list |
+| `GET /v1/conversations/:id` | Full thread with attachments |
 | `POST /v1/files` | Upload, returns ids |
 | `POST /v1/process` | Plan + run against uploaded ids |
 | `POST /v1/process/upload` | Upload and process in one call |
@@ -198,6 +243,7 @@ blob — the safest thing to hold onto is nothing.
 
 ```
 apps/api/src/
+  chat/         turn classification · reply writing · conversation service
   agent/        router · rule engine · LLM planner · prompt
   llm/          manager · adapters · encryption
   constraints/  the byte-window engine

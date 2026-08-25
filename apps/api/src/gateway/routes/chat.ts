@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { notFound } from '../../core/errors.js';
-import { handleTurn, serialise } from '../../chat/service.js';
+import { adjustSchema } from '../../chat/adjust.js';
+import { handleAdjust, handleTurn, serialise } from '../../chat/service.js';
 import { repository } from '../../db/index.js';
 import type { FileRecord } from '../../db/types.js';
 import { ownerOf } from '../context.js';
@@ -10,6 +11,12 @@ const turnBody = z.object({
   conversationId: z.string().uuid().optional(),
   text: z.string().max(4000).default(''),
   fileIds: z.array(z.string().uuid()).max(64).default([]),
+});
+
+const adjustBody = z.object({
+  conversationId: z.string().uuid(),
+  fileId: z.string().uuid(),
+  adjustment: adjustSchema,
 });
 
 const idParams = z.object({ id: z.string().uuid() });
@@ -55,6 +62,36 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     } catch (error) {
       const message = (error as Error).message;
       if (!closed) reply.raw.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
+    } finally {
+      if (!reply.raw.writableEnded) reply.raw.end();
+    }
+
+    return reply;
+  });
+
+  /** Apply an exact crop, resize or rotate from the editor. Same stream shape. */
+  app.post('/v1/chat/adjust', async (request: FastifyRequest, reply: FastifyReply) => {
+    const owner = ownerOf(request);
+    const body = adjustBody.parse(request.body);
+
+    reply.raw.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    });
+
+    try {
+      for await (const event of handleAdjust({
+        ownerId: owner,
+        conversationId: body.conversationId,
+        fileId: body.fileId,
+        adjustment: body.adjustment,
+      })) {
+        reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+    } catch (error) {
+      reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: (error as Error).message })}\n\n`);
     } finally {
       if (!reply.raw.writableEnded) reply.raw.end();
     }

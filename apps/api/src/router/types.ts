@@ -33,7 +33,12 @@ export interface Capability<P = any> {
   description: string;
   /** MIME patterns this capability consumes, e.g. `image/*`. */
   accepts: string[];
-  /** MIME produced, or `same` when the capability preserves the input type. */
+  /**
+   * MIME produced. `same` when the capability preserves the input type, and
+   * `varies` when it cannot be known statically - unpacking an archive yields
+   * whatever was inside it. `varies` turns off the static type check for
+   * everything downstream, which is why the executor re-checks at runtime.
+   */
   produces: string;
   paramsSchema: z.ZodType<P>;
   /** One-line parameter summary shown to the planner model. */

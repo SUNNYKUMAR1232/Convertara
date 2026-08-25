@@ -72,6 +72,10 @@ export async function* sendTurn(input: {
     ...(input.signal ? { signal: input.signal } : {}),
   });
 
+  yield* readEvents(response);
+}
+
+async function* readEvents(response: Response): AsyncGenerator<TurnEvent> {
   if (!response.ok || !response.body) {
     const text = await response.text().catch(() => '');
     let message = `Request failed (${response.status})`;
@@ -107,6 +111,20 @@ export async function* sendTurn(input: {
       boundary = buffer.indexOf('\n\n');
     }
   }
+}
+
+/** Applies an exact crop/resize/rotate. Same event stream as a chat turn. */
+export async function* sendAdjustment(input: {
+  conversationId: string;
+  fileId: string;
+  adjustment: unknown;
+}): AsyncGenerator<TurnEvent> {
+  const response = await fetch(`${BASE}/v1/chat/adjust`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  yield* readEvents(response);
 }
 
 export const chatApi = {

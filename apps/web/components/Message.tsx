@@ -5,7 +5,14 @@ import type { ChatMessage } from '@/lib/chat';
 
 const IMAGE = /^image\//;
 
-export function Message({ message }: { message: ChatMessage }) {
+export function Message({
+  message,
+  onEdit,
+}: {
+  message: ChatMessage;
+  /** Offered only for images the assistant produced, which are editable. */
+  onEdit?: (file: ChatMessage['attachments'][number]) => void;
+}) {
   const isUser = message.role === 'user';
 
   return (
@@ -60,9 +67,16 @@ export function Message({ message }: { message: ChatMessage }) {
                 </span>
 
                 {!isUser && (
-                  <a className="get" href={`/api${file.downloadUrl}`} download={file.filename}>
-                    Download
-                  </a>
+                  <span className="actions">
+                    {onEdit && IMAGE.test(file.mime) && typeof file.meta.width === 'number' && (
+                      <button className="edit" onClick={() => onEdit(file)}>
+                        Adjust
+                      </button>
+                    )}
+                    <a className="get" href={`/api${file.downloadUrl}`} download={file.filename}>
+                      Download
+                    </a>
+                  </span>
                 )}
               </div>
             ))}

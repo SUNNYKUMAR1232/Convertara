@@ -79,7 +79,9 @@ const extract: Capability = {
   title: 'Extract a zip',
   description: 'Unpack a zip archive. Path traversal and zip bombs are rejected before anything is written.',
   accepts: [ZIP_MIME, 'application/x-zip-compressed'],
-  produces: 'same',
+  // Whatever was in the archive - declaring `same` here told the router the
+  // output was still a zip, and let a later zip-only operation through.
+  produces: 'varies',
   cost: 4,
   available: always,
   paramsHint: 'prefix: optional path prefix filter',

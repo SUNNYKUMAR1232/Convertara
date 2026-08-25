@@ -5,7 +5,7 @@ import { AppError } from '../core/errors.js';
 import { logger } from '../core/logger.js';
 import type { Plan } from '../core/plan.js';
 import { bus } from '../events/bus.js';
-import { estimateCost, resolvePlan } from '../router/capability-router.js';
+import { estimateCost, mimeMatches, resolvePlan } from '../router/capability-router.js';
 import { registry } from '../router/registry.js';
 import type { EngineContext, WorkFile } from '../router/types.js';
 import { buildZip } from '../engines/archive/index.js';
@@ -84,6 +84,17 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
           });
         },
       };
+
+      // Re-check the input types for real. `varies` steps make the static
+      // check blind, and an engine failing deep inside on the wrong type gives
+      // a far worse message than refusing here does.
+      const wrongType = files.find((file) => !mimeMatches(capability.accepts, file.mime));
+      if (wrongType) {
+        throw new AppError('PLAN_INVALID', `"${capability.name}" cannot accept ${wrongType.mime}`, {
+          file: wrongType.name,
+          accepts: capability.accepts,
+        });
+      }
 
       try {
         files = await capability.run({ files, params: params as never, ctx });

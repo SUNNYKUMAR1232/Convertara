@@ -23,7 +23,7 @@ export function mimeMatches(patterns: string[], mime: string): boolean {
  */
 export async function resolvePlan(plan: Plan, files: WorkFile[]): Promise<ResolvedOperation[]> {
   const resolved: ResolvedOperation[] = [];
-  let currentMimes = files.map((f) => f.mime);
+  let currentMimes: Array<string | undefined> = files.map((f) => f.mime);
 
   for (const [index, operation] of plan.operations.entries()) {
     const capability = registry.get(operation.op);
@@ -47,7 +47,11 @@ export async function resolvePlan(plan: Plan, files: WorkFile[]): Promise<Resolv
       });
     }
 
-    const mismatched = currentMimes.filter((m) => !mimeMatches(capability.accepts, m));
+    // `undefined` means an earlier step produced something unpredictable, so
+    // there is nothing to check statically. The executor checks it for real.
+    const mismatched = currentMimes.filter(
+      (m): m is string => m !== undefined && !mimeMatches(capability.accepts, m),
+    );
     if (mismatched.length > 0) {
       throw new AppError('PLAN_INVALID', `"${operation.op}" cannot accept ${[...new Set(mismatched)].join(', ')}`, {
         index,
@@ -55,7 +59,8 @@ export async function resolvePlan(plan: Plan, files: WorkFile[]): Promise<Resolv
       });
     }
 
-    if (capability.produces !== 'same') currentMimes = currentMimes.map(() => capability.produces);
+    if (capability.produces === 'varies') currentMimes = currentMimes.map(() => undefined);
+    else if (capability.produces !== 'same') currentMimes = currentMimes.map(() => capability.produces);
     resolved.push({ capability, params: parsed.data });
   }
 
