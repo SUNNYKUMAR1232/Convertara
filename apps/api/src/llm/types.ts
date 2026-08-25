@@ -95,7 +95,11 @@ export async function postJson(
 
 /** Models sometimes wrap JSON in prose or a code fence. Dig it out. */
 export function parseJsonLoose(raw: string, provider: string): unknown {
-  const trimmed = raw.trim();
+  // Reasoning models emit their working first, in tags, and those blocks are
+  // full of braces - so strip them before any brace-matching runs, or the
+  // fallback below locks on to a brace inside the reasoning.
+  const withoutReasoning = raw.replace(/<(think|thinking|reasoning)>[\s\S]*?<\/\1>/gi, '');
+  const trimmed = withoutReasoning.trim();
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(trimmed);
   const candidate = fenced?.[1]?.trim() ?? trimmed;
 

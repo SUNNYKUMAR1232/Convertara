@@ -46,6 +46,18 @@ class LlmManager {
     if (settings.baseUrl) await assertSafeEndpoint(settings.baseUrl);
   }
 
+  /**
+   * Say which key is missing. Without this the request goes out unauthenticated
+   * and the provider answers with its own 401, which reads like a bad key
+   * rather than an absent one.
+   */
+  private assertKey(settings: LlmSettings): void {
+    const adapter = this.adapterFor(settings.provider);
+    if (adapter.requiresApiKey && !settings.apiKey) {
+      throw new AppError('LLM_UNAVAILABLE', `${settings.provider} needs an API key before it can be used`);
+    }
+  }
+
   adapterFor(provider: LlmProvider): LlmAdapter {
     const adapter = ADAPTERS[provider];
     if (!adapter) throw new AppError('BAD_REQUEST', `Unknown provider: ${provider}`);
@@ -88,9 +100,7 @@ class LlmManager {
    */
   async generate(request: StructuredRequest, settings: LlmSettings): Promise<StructuredResponse> {
     const adapter = this.adapterFor(settings.provider);
-    if (adapter.requiresApiKey && !settings.apiKey) {
-      throw new AppError('LLM_UNAVAILABLE', `${settings.provider} needs an API key before it can be used`);
-    }
+    this.assertKey(settings);
 
     await this.guard(settings);
 
@@ -124,6 +134,7 @@ class LlmManager {
   async test(settings: LlmSettings): Promise<TestResult> {
     const started = Date.now();
     try {
+      this.assertKey(settings);
       await this.guard(settings);
       const response = await this.adapterFor(settings.provider).generate(
         {
@@ -135,7 +146,12 @@ class LlmManager {
             properties: { ok: { type: 'boolean' } },
             required: ['ok'],
           },
-          maxOutputTokens: 64,
+          // Generous for a two-token answer, but a reasoning model spends its
+          // budget thinking before it writes anything. At 64 the whole budget
+          // went on reasoning, the content came back empty, and the provider
+          // rejected the empty string as invalid JSON - a working key looking
+          // exactly like a broken one.
+          maxOutputTokens: 1024,
         },
         { ...settings, timeoutMs: Math.min(settings.timeoutMs, 20_000) },
       );
@@ -148,6 +164,7 @@ class LlmManager {
   async listModels(settings: LlmSettings): Promise<string[]> {
     const adapter = this.adapterFor(settings.provider);
     if (!adapter.listModels) return [];
+    this.assertKey(settings);
     await this.guard(settings);
     return adapter.listModels(settings);
   }

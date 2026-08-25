@@ -26,16 +26,25 @@ const upsertBody = z.object({
   isDefault: z.boolean().default(true),
 });
 
-const testBody = z.union([
-  z.object({ configId: z.string().uuid() }),
-  z.object({
-    provider: providerEnum,
-    model: z.string().min(1).max(120),
+/**
+ * Test and list-models accept a saved configuration, a set of loose fields, or
+ * both. Both is the case that matters: the settings screen never receives a
+ * stored key back, so a test of a saved configuration has no key to send. With
+ * `configId` alongside the edited fields, the stored key fills that gap while
+ * the edits still take effect.
+ */
+const testBody = z
+  .object({
+    configId: z.string().uuid().optional(),
+    provider: providerEnum.optional(),
+    model: z.string().min(1).max(120).optional(),
     baseUrl: z.string().url().max(400).optional(),
     apiKey: z.string().max(400).optional(),
-    temperature: z.number().min(0).max(2).default(0.1),
-  }),
-]);
+    temperature: z.number().min(0).max(2).optional(),
+  })
+  .refine((body) => body.configId !== undefined || (body.provider !== undefined && body.model !== undefined), {
+    message: 'Provide configId, or both provider and model',
+  });
 
 export async function llmRoutes(app: FastifyInstance): Promise<void> {
   /** Everything the settings screen needs to render itself. */
@@ -122,17 +131,22 @@ export async function llmRoutes(app: FastifyInstance): Promise<void> {
 }
 
 async function resolveSettings(owner: string, body: z.infer<typeof testBody>): Promise<LlmSettings> {
-  if ('configId' in body) {
+  let stored: LlmSettings | undefined;
+  if (body.configId !== undefined) {
     const record = await repository().getLlmConfig(body.configId);
     if (!record || record.ownerId !== owner) throw notFound('Configuration not found');
-    return llm.toSettings(record);
+    stored = llm.toSettings(record);
   }
+
+  // Anything the caller sent wins; the stored configuration fills the rest,
+  // which is how an untouched key survives a test of edited settings.
   return {
-    provider: body.provider,
-    model: body.model,
-    apiKey: body.apiKey,
-    baseUrl: body.baseUrl,
-    temperature: body.temperature,
+    ...stored,
+    provider: body.provider ?? stored?.provider ?? 'openai',
+    model: body.model ?? stored?.model ?? '',
+    apiKey: body.apiKey ?? stored?.apiKey,
+    baseUrl: body.baseUrl ?? stored?.baseUrl,
+    temperature: body.temperature ?? stored?.temperature ?? 0.1,
     timeoutMs: config().LLM_TIMEOUT_MS,
   };
 }
