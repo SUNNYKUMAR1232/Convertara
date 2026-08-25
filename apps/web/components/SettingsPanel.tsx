@@ -90,6 +90,9 @@ export function SettingsPanel() {
     setStatus({ kind: 'info', text: 'Contacting the provider…' });
     try {
       const result = await api.testLlm({
+        // The stored key never comes back to this page, so when the key box is
+        // empty the server has to read it from the saved configuration.
+        ...(draft.id ? { configId: draft.id } : {}),
         provider: draft.provider,
         model: draft.model,
         ...(draft.baseUrl ? { baseUrl: draft.baseUrl } : {}),
@@ -112,6 +115,7 @@ export function SettingsPanel() {
     setBusy(true);
     try {
       const result = await api.listModels({
+        ...(draft.id ? { configId: draft.id } : {}),
         provider: draft.provider,
         model: draft.model || 'placeholder',
         ...(draft.baseUrl ? { baseUrl: draft.baseUrl } : {}),
